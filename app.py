@@ -29,6 +29,17 @@ st.markdown("""
     }
     .main-title { font-weight: 800; color: #1e293b; border-bottom: 2px solid #4facfe; padding-bottom: 10px; }
     .status-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .entity-tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background-color: #e2e8f0;
+        color: #475569;
+        font-size: 0.85em;
+        margin-right: 5px;
+        margin-bottom: 5px;
+        border: 1px solid #cbd5e1;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -72,7 +83,6 @@ if page == "🎫 Live Ticket Desk":
                         logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
                         log_placeholder.markdown(f"<div class='log-container'>{'<br>'.join(logs)}</div>", unsafe_allow_html=True)
 
-                    # Simplified AI-focused steps
                     steps = [
                         ("Initiating Translation Engine...", 20),
                         ("Cleaning noise & lemmatizing...", 40),
@@ -90,6 +100,8 @@ if page == "🎫 Live Ticket Desk":
                         res = requests.post("http://127.0.0.1:8000/classify", json={"title": t_input, "description": d_input})
                         if res.status_code == 200:
                             data = res.json()
+                            # Store description for the history/archive
+                            data['description'] = d_input
                             st.session_state['last_res'] = data
                             st.session_state['history'].append(data)
                             add_log("SUCCESS: Prediction generated.")
@@ -103,8 +115,8 @@ if page == "🎫 Live Ticket Desk":
             
             # Key Results
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("AI Category", res['category'])
-            with c2: st.metric("AI Priority", res['priority'])
+            with c1: st.metric("AI Category", res['category'].upper())
+            with c2: st.metric("AI Priority", res['priority'].upper())
             with c3: st.metric("Confidence", f"{int(res['category_confidence']*100)}%")
             
             # Logic Summary
@@ -114,12 +126,31 @@ if page == "🎫 Live Ticket Desk":
                     <p style='color: #64748b; font-size: 0.9em; margin-bottom: 5px;'>Auto-Generated Title</p>
                     <h3 style='margin-top: 0;'>{res['title']}</h3>
                     <hr>
-                    <p><b>Decision Logic:</b> {'✅ Pure Transformer' if res['category'] != 'Needs Manual Review' else '⚠️ Safety Override Triggered'}</p>
-                    <p><b>Priority Status:</b> {res['priority']} ({'Manual Override' if res['priority'] == 'Critical' else 'Model Predicted'})</p>
+                    <p><b>Status:</b> <span style="color: green;">● {res['status'].upper()}</span></p>
+                    <p><b>Created At:</b> {res['created_at']}</p>
                 </div>
                 """, unsafe_allow_html=True)
+
+            # Entity Display
+            st.markdown("#### 🛠 Extracted Entities")
+            e1, e2, e3 = st.columns(3)
+            with e1:
+                st.write("**Devices**")
+                if res['entities']['devices']:
+                    for d in res['entities']['devices']: st.markdown(f'<span class="entity-tag">{d}</span>', unsafe_allow_html=True)
+                else: st.write("None")
+            with e2:
+                st.write("**Usernames**")
+                if res['entities']['usernames']:
+                    for u in res['entities']['usernames']: st.markdown(f'<span class="entity-tag">{u}</span>', unsafe_allow_html=True)
+                else: st.write("None")
+            with e3:
+                st.write("**Error Codes**")
+                if res['entities']['error_codes']:
+                    for ec in res['entities']['error_codes']: st.markdown(f'<span class="entity-tag">{ec}</span>', unsafe_allow_html=True)
+                else: st.write("None")
             
-            with st.expander("📄 View Raw Prediction Data"):
+            with st.expander("📄 View Structured JSON Output"):
                 st.json(res)
         else:
             st.info("Awaiting incident description for processing.")
@@ -137,46 +168,33 @@ elif page == "📊 Model Analytics":
         st.subheader("Final Training Evaluation (Kaggle Export)")
         st.info("The following visualizations were generated during the model training phase on the validation dataset.")
 
-        # --- Tabbed View for Category vs Priority ---
         tab1, tab2 = st.tabs(["🏷️ Category Model", "⚡ Priority Model"])
 
         with tab1:
             st.markdown("### Category Classification Performance")
             col_c1, col_c2 = st.columns(2)
-            
-            with col_c1:
-                # Path to your actual images
-                st.image("assets/category_confusion_matrix.png", caption="Category Confusion Matrix")
-            with col_c2:
-                st.image("assets/category_classification_report.png", caption="Category Report (Precision/Recall)")
-            
+            with col_c1: st.image("assets/category_confusion_matrix.png", caption="Category Confusion Matrix")
+            with col_c2: st.image("assets/category_classification_report.png", caption="Category Report (Precision/Recall)")
             st.markdown("---")
             st.image("assets/category_epochs.png", caption="Category Training Loss & Accuracy per Epoch", use_container_width=True)
 
         with tab2:
             st.markdown("### Priority Classification Performance")
             col_p1, col_p2 = st.columns(2)
-            
-            with col_p1:
-                st.image("assets/priority_confusion_matrix.png", caption="Priority Confusion Matrix")
-            with col_p2:
-                st.image("assets/priority_classification_report.png", caption="Priority Report (Precision/Recall)")
-            
+            with col_p1: st.image("assets/priority_confusion_matrix.png", caption="Priority Confusion Matrix")
+            with col_p2: st.image("assets/priority_classification_report.png", caption="Priority Report (Precision/Recall)")
             st.markdown("---")
             col_p3, col_p4 = st.columns(2)
-            with col_p3:
-                st.image("assets/priority_epochs.png", caption="Priority Training Epochs")
-            with col_p4:
-                st.image("assets/priority_histogram.png", caption="Distribution of Priority Classes")
+            with col_p3: st.image("assets/priority_epochs.png", caption="Priority Training Epochs")
+            with col_p4: st.image("assets/priority_histogram.png", caption="Distribution of Priority Classes")
 
     else:
-        # --- DYNAMIC LIVE ANALYTICS (Current Session) ---
         if st.session_state['history']:
             df = pd.DataFrame(st.session_state['history'])
             m1, m2, m3 = st.columns(3)
             m1.metric("Total Processed", len(df))
             m2.metric("Avg AI Confidence", f"{round(df['category_confidence'].mean() * 100, 1)}%")
-            m3.metric("Critical Tickets", len(df[df['priority'] == 'Critical']))
+            m3.metric("Critical Tickets", len(df[df['priority'].str.lower() == 'critical']))
             
             st.divider()
             
@@ -195,8 +213,13 @@ elif page == "📊 Model Analytics":
 elif page == "📂 History & Export":
     st.markdown("<h1 class='main-title'>Ticket Archive</h1>", unsafe_allow_html=True)
     if st.session_state['history']:
+        # Prepare a clean DataFrame for display
         df = pd.DataFrame(st.session_state['history'])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Display simplified columns in the UI table
+        display_df = df[['created_at', 'title', 'category', 'priority', 'status']]
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
         st.download_button("📥 Export History (CSV)", df.to_csv(index=False).encode('utf-8'), "tickets.csv", "text/csv")
     else:
         st.warning("No records found.")

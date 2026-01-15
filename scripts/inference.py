@@ -1,6 +1,7 @@
 import re
 import torch
 import numpy as np
+import os
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import spacy
 from keybert import KeyBERT
@@ -8,17 +9,26 @@ from langdetect import detect
 from deep_translator import GoogleTranslator
 import nltk
 from spacy.lang.en.stop_words import STOP_WORDS
+from datetime import datetime
 
 nltk.download('punkt')
 
 # ===============================
-# Device & Models
+# Device & Absolute Paths
 # ===============================
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-CATEGORY_MODEL_PATH = "models/category_model"
-PRIORITY_MODEL_PATH = "models/priority_model"
+# Get the absolute path of the current script's directory (the 'scripts' folder)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Point to the models folder located one level above 'scripts'
+CATEGORY_MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "category_model")
+PRIORITY_MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "priority_model")
+
+# ===============================
+# Load Transformer Models
+# ===============================
+# Loading using absolute paths to prevent "Repository Not Found" errors
 category_tokenizer = AutoTokenizer.from_pretrained(CATEGORY_MODEL_PATH)
 category_model = AutoModelForSequenceClassification.from_pretrained(CATEGORY_MODEL_PATH).to(device)
 category_model.eval()
@@ -29,6 +39,7 @@ priority_model = AutoModelForSequenceClassification.from_pretrained(PRIORITY_MOD
 priority_model.eval()
 pri_id2label = priority_model.config.id2label
 
+# NLP Models for Preprocessing
 nlp = spacy.load("en_core_web_sm")
 kw_model = KeyBERT()
 
@@ -57,14 +68,32 @@ def lemmatize_and_clean_text(text):
               and token.lemma_.lower() not in STOP_WORDS]
     return " ".join(tokens)
 
+# ===============================
+# Entity Extraction for JSON
+# ===============================
+def extract_entities(text):
+    doc = nlp(text)
+    entities = {"devices": [], "usernames": [], "error_codes": []}
+    
+    # Simple keyword-based device extraction
+    device_list = ["laptop", "mouse", "printer", "keyboard", "monitor", "server", "wifi"]
+    for token in doc:
+        if token.text.lower() in device_list:
+            entities["devices"].append(token.text.lower())
+    
+    # Regex for usernames (@name) and Error Codes (0x... or ERR_...)
+    entities["usernames"] = list(set(re.findall(r"@[a-zA-Z0-9_]+", text)))
+    entities["error_codes"] = list(set(re.findall(r"\b(?:0x[0-9A-F]+|ERR_[0-9]+|[A-Z]+-[0-9]+)\b", text)))
+    
+    entities["devices"] = list(set(entities["devices"]))
+    return entities
+
 def preprocess_text(title=None, description=None):
     text = f"{title} {description}" if title and description else (title or description or "")
-    
     translated = translate_to_english(text)
     cleaned = clean_text(translated)
     processed = lemmatize_and_clean_text(cleaned)
     
-    # Keyword extraction for auto-titling
     keywords = ""
     try:
         kw = kw_model.extract_keywords(processed, keyphrase_ngram_range=(1,2), stop_words='english', top_n=3)
@@ -95,47 +124,43 @@ def model_predict(text):
     }
 
 def apply_minimal_rules(text, pred, threshold=0.4):
-    """
-    Only handles Priority overrides and 'Needs Manual Review' for garbage/low confidence.
-    """
     text_lower = text.lower().strip()
-    
-    # 1. Validation for Garbage/Empty Input
     if not text_lower or len(text_lower) < 5:
         return "Needs Manual Review", "Low", 1.0
 
     final_cat = pred["category"]
     final_pri = pred["priority"]
     
-    # 2. Priority Rule Overrides (Critical Items)
     critical_keywords = r"server down|production down|security breach|ransomware|data loss|critical error"
     if re.search(critical_keywords, text_lower):
         final_pri = "Critical"
 
-    # 3. Low Confidence Logic
     if pred["category_confidence"] < threshold:
         final_cat = "Needs Manual Review"
         
     return final_cat, final_pri
 
 # ===============================
-# FINAL PIPELINE
+# FINAL PIPELINE (Updated for JSON)
 # ===============================
 def predict_ticket_final(title=None, description=None):
-    translated, processed, keywords = preprocess_text(title, description)
-    
-    # Get raw AI predictions
+    translated_text, processed, keywords = preprocess_text(title, description)
     raw_pred = model_predict(processed)
-    
-    # Apply minimal logic for Priority and Review
     final_cat, final_pri = apply_minimal_rules(processed, raw_pred)
+
+    # Fetch entities from translated text
+    entities = extract_entities(translated_text)
 
     auto_title = title if title and title.strip() else keywords.title() or "New Support Ticket"
 
+    # Strict JSON Format Return
     return {
         "title": auto_title,
-        "category": final_cat,
+        "category": final_cat.lower(),
+        "priority": final_pri.lower(),
+        "entities": entities,
+        "status": "open",
+        "created_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "category_confidence": round(raw_pred["category_confidence"], 3),
-        "priority": final_pri,
         "priority_confidence": round(raw_pred["priority_confidence"], 3)
     }
