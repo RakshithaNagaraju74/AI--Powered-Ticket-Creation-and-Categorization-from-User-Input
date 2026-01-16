@@ -74,6 +74,14 @@ To ensure reliability, the AI is augmented with a safety layer:
 * **Data Visualization:** Plotly, WordCloud, Matplotlib.
 
 ---
+✅ Modules Completed
+Module	Description	Status
+Module 1	Data Collection & Preprocessing	✅ Completed
+Module 2	NLP Model Development + NER	✅ Completed
+Module 3	Ticket Generation Engine	✅ Completed
+Module 4	UI & Integration Layer	✅ Completed
+
+---
 
 ## 🚀 How to Run
 
