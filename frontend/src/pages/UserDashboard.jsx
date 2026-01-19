@@ -508,50 +508,50 @@ const NotificationBell = ({ theme, notifications, onMarkAsRead, onMarkAllAsRead 
 };
 
 // Enhanced Live Stats Component with Charts
+// Update your LiveStats component to use the dynamic stats
 const LiveStats = ({ theme, stats, loading }) => {
-  // Add this line to define trend
-  const [trend, setTrend] = useState('up');
-
+  // Update statItems to use dynamic values
   const statItems = [
     { 
-      label: 'Active Agents', 
-      value: stats.activeAgents, // 👈 Uses the value passed from the parent
+      label: 'Support Team', 
+      value: stats.supportTeamMembers || 0,
       color: '#6366f1', 
       icon: <Users size={16} />,
-      description: 'Support staff online'
+      description: 'Total support team members'
     },
     { 
       label: 'Avg Response', 
-      value: stats.avgResponseTime, 
+      value: stats.avgResponseTime || 'Calculating...', 
       color: '#10b981', 
       icon: <Clock size={16} />,
-      description: 'Average first response time'
+      description: 'Average response time'
     },
     { 
       label: 'Satisfaction', 
-      value: stats.satisfactionRate, 
+      value: stats.satisfactionRate || 'N/A', 
       color: '#f59e0b', 
       icon: <StarIcon size={16} />,
-      description: 'Customer satisfaction rate'
+      description: 'Based on recent feedback'
     },
     { 
       label: 'Today\'s Tickets', 
-      value: stats.ticketsToday, 
+      value: stats.ticketsToday || 0, 
       color: '#3b82f6', 
       icon: <FileText size={16} />,
-      description: 'Tickets created today'
+      description: 'Tickets created today',
+      trend: stats.ticketsTrend
     },
     { 
       label: 'Resolved Today', 
-      value: stats.resolvedToday, 
+      value: stats.resolvedToday || 0, 
       color: '#8b5cf6', 
       icon: <CheckCircle size={16} />,
       description: 'Tickets resolved today',
-      trend: trend
+      trend: stats.resolvedTrend
     },
     { 
       label: 'Active Tickets', 
-      value: stats.activeTickets, 
+      value: stats.activeTickets || 0, 
       color: '#ef4444', 
       icon: <Activity size={16} />,
       description: 'Currently open tickets'
@@ -570,7 +570,12 @@ const LiveStats = ({ theme, stats, loading }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
         <div>
           <h4 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px 0' }}>Live Support Dashboard</h4>
-          <p style={{ fontSize: '12px', color: theme.muted, margin: 0 }}>Real-time system performance metrics</p>
+          <p style={{ fontSize: '12px', color: theme.muted, margin: 0 }}>
+            Real-time system performance metrics • Updated: {stats.lastUpdated ? 
+              new Date(stats.lastUpdated).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 
+              'Just now'
+            }
+          </p>
         </div>
         <div style={{
           display: 'flex',
@@ -655,6 +660,7 @@ const LiveStats = ({ theme, stats, loading }) => {
                 }}>
                   {stat.trend === 'up' ? <TrendingUpIcon size={8} /> : 
                    stat.trend === 'down' ? <TrendingDown size={8} /> : '='}
+                  {stat.trend === 'up' ? '↑' : stat.trend === 'down' ? '↓' : '→'}
                 </div>
               )}
             </div>
@@ -691,32 +697,64 @@ const LiveStats = ({ theme, stats, loading }) => {
         ))}
       </div>
       
-      {/* Resolution Rate Progress Bar */}
-      <div style={{
-        background: '#f8fafc',
-        borderRadius: '12px',
-        padding: '16px',
-        border: `1px solid ${theme.border}`
+      {/* Enhanced Stats Summary */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr', 
+        gap: '16px',
+        marginTop: '24px'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: theme.muted }}>Resolution Rate</span>
-          <span style={{ fontSize: '14px', fontWeight: '700', color: '#10b981' }}>
-            {stats.resolutionRate}%
-          </span>
-        </div>
+        {/* Overall Resolution Rate Progress Bar */}
         <div style={{
-          height: '6px',
-          background: '#e2e8f0',
-          borderRadius: '3px',
-          overflow: 'hidden'
+          background: '#f8fafc',
+          borderRadius: '12px',
+          padding: '16px',
+          border: `1px solid ${theme.border}`
         }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: theme.muted }}>Overall Resolution Rate (30 days)</span>
+            <span style={{ fontSize: '14px', fontWeight: '700', color: '#10b981' }}>
+              {stats.overallResolutionRate || 0}%
+            </span>
+          </div>
           <div style={{
-            width: `${stats.resolutionRate}%`,
-            height: '100%',
-            background: 'linear-gradient(90deg, #10b981, #34d399)',
+            height: '6px',
+            background: '#e2e8f0',
             borderRadius: '3px',
-            transition: 'width 0.5s ease'
-          }} />
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              width: `${stats.overallResolutionRate || 0}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #10b981, #34d399)',
+              borderRadius: '3px',
+              transition: 'width 0.5s ease'
+            }} />
+          </div>
+          <div style={{ fontSize: '10px', color: theme.muted, marginTop: '4px' }}>
+            {stats.resolvedTickets || 0} of {stats.totalTickets || 0} tickets resolved
+          </div>
+        </div>
+        
+        {/* Feedback Summary */}
+        <div style={{
+          background: '#f8fafc',
+          borderRadius: '12px',
+          padding: '16px',
+          border: `1px solid ${theme.border}`
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: theme.muted }}>Customer Feedback (30 days)</span>
+            <span style={{ fontSize: '14px', fontWeight: '700', color: '#f59e0b' }}>
+              {stats.feedbackCount || 0} ratings
+            </span>
+          </div>
+          <div style={{ fontSize: '10px', color: theme.muted }}>
+            {stats.satisfactionRate === 'N/A' ? 
+              'No feedback yet' : 
+              `Based on ${stats.feedbackCount || 0} recent ratings`
+            }
+          </div>
         </div>
       </div>
     </div>
@@ -1250,6 +1288,7 @@ const FAQSection = ({ theme }) => {
   );
 };
 // Profile Component
+// Profile Component - FIXED VERSION
 const ProfileSection = ({ theme, userData, tickets }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -1269,22 +1308,29 @@ const ProfileSection = ({ theme, userData, tickets }) => {
   });
 
   const [activeSettingsTab, setActiveSettingsTab] = useState('personal');
+  
+  // Add userStats as a state variable
+  const [userStats, setUserStats] = useState({
+    totalTickets: 0,
+    resolvedTickets: 0,
+    avgResponseTime: 'Calculating...',
+    satisfactionRating: 0
+  });
 
   // 🔥 ADD THE FETCH PROFILE DATA USEEFFECT HERE 🔥
   useEffect(() => {
     const fetchProfileData = async () => {
       try {
+        if (!userData?.id) return;
+        
         const token = localStorage.getItem('token');
         if (!token) return;
         
-        const decoded = decodeToken(token);
-        if (!decoded || !decoded.id) return;
-        
-        const response = await axios.get(`http://localhost:5000/api/auth/profile/${decoded.id}`, {
+        const response = await axios.get(`http://localhost:5000/api/auth/profile/${userData.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
-        if (response.data.user) {
+        if (response.data?.user) {
           const user = response.data.user;
           setFormData({
             name: user.name || '',
@@ -1298,143 +1344,195 @@ const ProfileSection = ({ theme, userData, tickets }) => {
         }
       } catch (error) {
         console.error('Error fetching profile data:', error);
+        // Use existing userData if API fails
+        if (userData) {
+          setFormData({
+            name: userData.name || '',
+            email: userData.email || '',
+            phone: '',
+            department: '',
+            position: '',
+            notifications: true,
+            newsletter: false
+          });
+        }
       }
     };
     
-    fetchProfileData();
-  }, [userData?.id]); // Run when userData.id changes
+    if (userData?.id) {
+      fetchProfileData();
+    }
+  }, [userData?.id]);
 
-  // Calculate user stats (existing code continues...)
-  
-  
-  // Rest of the ProfileSection component...
-
-  // Calculate user stats
-  const userStats = {
-    totalTickets: tickets.length,
-    resolvedTickets: tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length,
-    avgResponseTime: '2h 15m',
-    satisfactionRating: tickets.length > 0 ? 
-      Math.round((tickets.filter(t => t.feedbackRating >= 4).length / tickets.length) * 100) : 0
-  };
+  // Calculate user stats and update with useEffect
+  useEffect(() => {
+    // Calculate basic stats
+    const totalTickets = tickets.length;
+    const resolvedTickets = tickets.filter(t => t.status === 'resolved' || t.status === 'closed').length;
+    const satisfactionRating = tickets.length > 0 ? 
+      Math.round((tickets.filter(t => t.feedbackRating >= 4).length / tickets.length) * 100) : 0;
+    
+    // Set initial stats
+    const initialStats = {
+      totalTickets,
+      resolvedTickets,
+      avgResponseTime: 'Calculating...',
+      satisfactionRating
+    };
+    
+    setUserStats(initialStats);
+    
+    // Calculate actual average response time for user's resolved tickets
+    const resolvedUserTickets = tickets.filter(t => 
+      t.status === 'resolved' && t.created_at && t.updatedAt
+    );
+    
+    if (resolvedUserTickets.length > 0) {
+      let totalMinutes = 0;
+      resolvedUserTickets.forEach(ticket => {
+        const created = new Date(ticket.created_at);
+        const resolved = new Date(ticket.updatedAt);
+        const diffMinutes = Math.floor((resolved - created) / (1000 * 60));
+        if (diffMinutes > 0) {
+          totalMinutes += diffMinutes;
+        }
+      });
+      
+      const avgMinutes = Math.round(totalMinutes / resolvedUserTickets.length);
+      setUserStats(prev => ({
+        ...prev,
+        avgResponseTime: avgMinutes < 60 ? 
+          `${avgMinutes}m` : 
+          `${Math.floor(avgMinutes/60)}h ${avgMinutes%60}m`
+      }));
+    }
+  }, [tickets]);
 
   const handleSaveProfile = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please login again');
-      window.location.href = '/auth';
-      return;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login again');
+        window.location.href = '/auth';
+        return;
+      }
+      
+      const decoded = decodeToken(token);
+      if (!decoded || !decoded.id) {
+        alert('Invalid session. Please login again.');
+        window.location.href = '/auth';
+        return;
+      }
+      
+      const response = await axios.put(`http://localhost:5000/api/auth/profile/${decoded.id}`, {
+        name: formData.name,
+        phone: formData.phone,
+        department: formData.department,
+        position: formData.position,
+        notifications: formData.notifications,
+        newsletter: formData.newsletter
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setIsEditing(false);
+      alert('Profile updated successfully!');
+      
+      // Update user data in parent
+      if (response.data.user) {
+        // You might want to update the userData in parent component
+        // This depends on how you handle global state
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert(error.response?.data?.error || 'Failed to update profile');
     }
-    
-    const decoded = decodeToken(token);
-    if (!decoded || !decoded.id) {
-      alert('Invalid session. Please login again.');
-      window.location.href = '/auth';
-      return;
-    }
-    
-    const response = await axios.put(`http://localhost:5000/api/auth/profile/${decoded.id}`, {
-      name: formData.name,
-      phone: formData.phone,
-      department: formData.department,
-      position: formData.position,
-      notifications: formData.notifications,
-      newsletter: formData.newsletter
-    }, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    setIsEditing(false);
-    alert('Profile updated successfully!');
-    
-    // Update user data in parent
-    if (response.data.user) {
-      // You might want to update the userData in parent component
-      // This depends on how you handle global state
-    }
-  } catch (error) {
-    console.error('Error updating profile:', error);
-    alert(error.response?.data?.error || 'Failed to update profile');
-  }
-};
+  };
 
-const handleChangePassword = async () => {
-  if (passwordData.newPassword !== passwordData.confirmPassword) {
-    alert('New passwords do not match');
-    return;
-  }
+  const handleChangePassword = async () => {
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New passwords do not match');
+      return;
+    }
 
-  try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please login again');
-      window.location.href = '/auth';
+    if (!passwordData.currentPassword) {
+      alert('Please enter your current password');
       return;
     }
-    
-    const decoded = decodeToken(token);
-    if (!decoded || !decoded.id) {
-      alert('Invalid session. Please login again.');
-      window.location.href = '/auth';
-      return;
-    }
-    
-    await axios.put(`http://localhost:5000/api/auth/change-password`, {
-      userId: decoded.id,
-      currentPassword: passwordData.currentPassword,
-      newPassword: passwordData.newPassword
-    }, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    alert('Password changed successfully!');
-  } catch (error) {
-    console.error('Error changing password:', error);
-    alert(error.response?.data?.error || 'Failed to change password');
-  }
-};
 
-const handleExportData = async () => {
-  try {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please login again');
-      window.location.href = '/auth';
-      return;
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login again');
+        window.location.href = '/auth';
+        return;
+      }
+      
+      const decoded = decodeToken(token);
+      if (!decoded || !decoded.id) {
+        alert('Invalid session. Please login again.');
+        window.location.href = '/auth';
+        return;
+      }
+      
+      await axios.put(`http://localhost:5000/api/auth/change-password`, {
+        userId: decoded.id,
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      alert('Password changed successfully!');
+    } catch (error) {
+      console.error('Error changing password:', error);
+      alert(error.response?.data?.error || 'Failed to change password');
     }
-    
-    const decoded = decodeToken(token);
-    if (!decoded || !decoded.id) {
-      alert('Invalid session. Please login again.');
-      window.location.href = '/auth';
-      return;
+  };
+
+  const handleExportData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login again');
+        window.location.href = '/auth';
+        return;
+      }
+      
+      const decoded = decodeToken(token);
+      if (!decoded || !decoded.id) {
+        alert('Invalid session. Please login again.');
+        window.location.href = '/auth';
+        return;
+      }
+      
+      const response = await axios.get(`http://localhost:5000/api/user/export-data`, {
+        params: { userId: decoded.id },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Create and download JSON file
+      const dataStr = JSON.stringify(response.data, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `user-data-${userData?.id}-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      alert('Data exported successfully!');
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      alert(error.response?.data?.error || 'Failed to export data');
     }
-    
-    const response = await axios.get(`http://localhost:5000/api/user/export-data`, {
-      params: { userId: decoded.id },
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    // Create and download JSON file
-    const dataStr = JSON.stringify(response.data, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `user-data-${userData?.id}-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    alert('Data exported successfully!');
-  } catch (error) {
-    console.error('Error exporting data:', error);
-    alert(error.response?.data?.error || 'Failed to export data');
-  }
-};
+  };
+
+  // Rest of your ProfileSection component remains the same...
+  // ... (all the JSX code stays exactly as you have it)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -2165,68 +2263,70 @@ useEffect(() => {
   // Listen for real-time updates
   // UserDashboard.jsx
 useEffect(() => {
-    if (!socket || !userData) return;
+  if (!socket || !userData) return;
 
-    // Ensure the role is sent!
-    socket.emit('join_user_room', { 
-      email: userData.email, 
-      role: userData.role 
-    });
+  // Ensure the role is sent with a valid email
+  socket.emit('join_user_room', { 
+    email: userData.email || 'user@example.com', 
+    role: userData.role || 'user'
+  });
 
-    socket.on('update_online_counts', (data) => {
-      // Update the main stats state
-      setStats(prev => ({ ...prev, activeAgents: data.agentsOnline }));
-    });
+  socket.on('update_online_counts', (data) => {
+    setStats(prev => ({ ...prev, activeAgents: data.agentsOnline }));
+  });
 
-    return () => socket.off('update_online_counts');
-  }, [socket, userData]);
+  return () => socket.off('update_online_counts');
+}, [socket, userData]);
   // Fetch user data from backend
-  const fetchUserData = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        window.location.href = '/auth';
-        return null;
-      }
-      
-      const decoded = decodeToken(token);
-      if (!decoded || !decoded.id) {
-        localStorage.removeItem('token');
-        window.location.href = '/auth';
-        return null;
-      }
-      
-      // Fetch user details from backend API
-      const response = await axios.get(`http://localhost:5000/api/auth/user/${decoded.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (response.data) {
-        const user = response.data.user || response.data;
-        setUserData({
-          id: user._id || decoded.id,
-          name: user.name || 'User',
-          email: user.email,
-          role: user.role || 'user'
-        });
-        return user;
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      // Fallback: get basic info from token
-      const token = localStorage.getItem('token');
-      const decoded = decodeToken(token);
-      if (decoded) {
-        setUserData({
-          id: decoded.id,
-          name: 'User',
-          email: '',
-          role: decoded.role || 'user'
-        });
-      }
+  // Update the fetchUserData function in your UserDashboard component
+const fetchUserData = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = '/auth';
+      return null;
     }
+    
+    const decoded = decodeToken(token);
+    
+    if (!decoded || !decoded.id) {
+      localStorage.removeItem('token');
+      window.location.href = '/auth';
+      return null;
+    }
+    
+    console.log('Fetching user data for ID:', decoded.id);
+    
+    // Use the correct endpoint for dashboard
+    const response = await axios.get(`http://localhost:5000/api/auth/user/${decoded.id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    console.log('User API Response:', response.data);
+    
+    if (response.data) {
+        const user = response.data;
+
+      const userDataObj = {
+        id: user._id || decoded.id,
+        name: user.name || 'User',
+        email: user.email || 'user@example.com',
+        role: user.role || 'user'
+      };
+      
+      console.log('Setting userData to:', userDataObj);
+      setUserData(userDataObj);
+      return user;
+    }
+  } catch (error) {
+    console.error('Error in fetchUserData:', error);
     return null;
-  };
+  }
+};
+// Add this inside your UserDashboard component:
+useEffect(() => {
+  console.log('Current userData:', userData);
+}, [userData]);
 
   // Update greeting based on time
   useEffect(() => {
@@ -2773,58 +2873,60 @@ useEffect(() => {
 </div>
 
         <div style={{ 
-          background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', 
-          padding: '16px', 
-          borderRadius: '16px', 
-          marginTop: '24px',
-          border: `1px solid ${theme.border}`,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-            <img 
-              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || 'User')}&background=6366f1&color=fff&bold=true&size=128`} 
-              style={{ width: '48px', height: '48px', borderRadius: '12px', border: `2px solid ${theme.primary}33` }} 
-              alt="avatar" 
-            />
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>{userData?.name || 'User'}</p>
-              <p style={{ fontSize: '11px', color: theme.muted, margin: 0 }}>{userData?.role?.toUpperCase() || 'USER'}</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-                <div style={{ fontSize: '10px', color: '#10b981', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-                  Active
-                </div>
-                <div style={{ fontSize: '10px', color: theme.muted, fontWeight: '500' }}>
-                  {userTicketsCount.total} tickets
-                </div>
-              </div>
-            </div>
-          </div>
-          <button 
-            onClick={handleLogout} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '10px', 
-              color: '#ef4444', 
-              background: 'none', 
-              border: 'none', 
-              cursor: 'pointer', 
-              padding: '10px 12px', 
-              fontWeight: '700', 
-              fontSize: '13px',
-              width: '100%',
-              borderRadius: '10px',
-              transition: 'all 0.2s',
-              ':hover': {
-                background: '#fee2e2',
-                transform: 'translateY(-1px)'
-              }
-            }}
-          >
-            <LogOut size={18}/> Logout
-          </button>
-        </div>
+  background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', 
+  padding: '16px', 
+  borderRadius: '16px', 
+  marginTop: '24px',
+  border: `1px solid ${theme.border}`,
+  boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
+}}>
+  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+    <img 
+      src={`https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || 'User')}&background=6366f1&color=fff&bold=true&size=128`} 
+      style={{ width: '48px', height: '48px', borderRadius: '12px', border: `2px solid ${theme.primary}33` }} 
+      alt="avatar" 
+    />
+    <div style={{ flex: 1 }}>
+  <p style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>{userData?.name || 'User'}</p>
+  <p style={{ fontSize: '11px', color: theme.muted, margin: 0 }}>
+    USER
+  </p>
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+    <div style={{ fontSize: '10px', color: '#10b981', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '2px' }}>
+      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+      Active
+    </div>
+    <div style={{ fontSize: '10px', color: theme.muted, fontWeight: '500' }}>
+      {userTicketsCount.total} tickets
+    </div>
+  </div>
+</div>
+  </div>
+  <button 
+    onClick={handleLogout} 
+    style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '10px', 
+      color: '#ef4444', 
+      background: 'none', 
+      border: 'none', 
+      cursor: 'pointer', 
+      padding: '10px 12px', 
+      fontWeight: '700', 
+      fontSize: '13px',
+      width: '100%',
+      borderRadius: '10px',
+      transition: 'all 0.2s',
+      ':hover': {
+        background: '#fee2e2',
+        transform: 'translateY(-1px)'
+      }
+    }}
+  >
+    <LogOut size={18}/> Logout
+  </button>
+</div>
       </div>
 
       <div style={styles.main}>
@@ -2838,9 +2940,9 @@ useEffect(() => {
             }}>
               {greeting.icon}
               <div>
-                <h1 style={{ fontSize: '28px', fontWeight: '800', margin: 0 }}>
-                  {greeting.greeting}, {userData?.name || 'User'}!
-                </h1>
+                <h2 style={{ fontSize: '40px', fontWeight: '900', margin: '0 0 16px 0', letterSpacing: '-1px' }}>
+        {greeting.greeting}, {userData?.name || 'User'}!
+      </h2>
                 <p style={{ fontSize: '14px', color: theme.muted, margin: '4px 0 0 0' }}>
                   Welcome back to your support dashboard
                 </p>
@@ -2903,8 +3005,8 @@ useEffect(() => {
               </div>
               <div style={{ position: 'relative', zIndex: 1, maxWidth: '600px' }}>
                 <h2 style={{ fontSize: '40px', fontWeight: '900', margin: '0 0 16px 0', letterSpacing: '-1px' }}>
-                  {greeting.greeting}, {userData?.name || 'User'}!
-                </h2>
+    {greeting.greeting}, {userData?.name || 'User'}!
+  </h2>
                 <p style={{ fontSize: '18px', opacity: 0.9, marginBottom: '24px' }}>
                   Our AI-Hybrid triage engine is ready to analyze your requests. How can we assist you today?
                 </p>
