@@ -10,7 +10,10 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000', // for local dev
+    'https://ai-powered-ticket-creation-and-l700.onrender.com' // your frontend URL
+  ],
   credentials: true
 }));
 app.use(express.json());

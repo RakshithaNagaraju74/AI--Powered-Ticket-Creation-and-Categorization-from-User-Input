@@ -44,7 +44,7 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const endpoint = isLogin ? '/auth/login' : '/auth/register';
       const res = await axios.post(`${API_BASE_URL}${endpoint}`, formData);
       
       if (!isLogin) {
