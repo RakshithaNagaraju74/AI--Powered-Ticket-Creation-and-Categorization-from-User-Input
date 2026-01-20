@@ -2227,11 +2227,9 @@ const UserDashboard = () => {
 // In your UserDashboard.jsx component, update the Socket.io connection:
 useEffect(() => {
   // Determine the WebSocket URL based on environment
-  const WS_URL = window.location.hostname.includes('localhost') 
-    ? 'http://localhost:5000' 
-    : 'https://your-backend-service.onrender.com'; // Replace with your actual backend URL
+  const WS_BASE_URL = API_BASE_URL.replace('/api', ''); // Remove /api for WebSocket
   
-  const newSocket = io(WS_URL, {
+  const newSocket = io(WS_BASE_URL, {
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: 5,
@@ -2331,7 +2329,7 @@ useEffect(() => {
   useEffect(() => {
     const checkAIStatus = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/health`, { timeout: 5000 });
+        const response = await axios.get(`${API_BASE_URL}/health`, { timeout: 5000 });
         if (response.data.ai_service?.status === 'healthy') {
           setAiStatus('connected');
           addLog("AI Service: Connected and Ready");
