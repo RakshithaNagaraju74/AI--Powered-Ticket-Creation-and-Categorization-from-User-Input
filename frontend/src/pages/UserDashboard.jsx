@@ -2224,43 +2224,30 @@ const UserDashboard = () => {
 
   // Initialize Socket.io connection
   // Initialize Socket.io connection
+// In your UserDashboard.jsx component, update the Socket.io connection:
 useEffect(() => {
-  // Add a check to prevent double connection in Strict Mode
-  let socketRef = null;
+  // Determine the WebSocket URL based on environment
+  const WS_URL = window.location.hostname.includes('localhost') 
+    ? 'http://localhost:5000' 
+    : 'https://your-backend-service.onrender.com'; // Replace with your actual backend URL
   
-  const connectSocket = () => {
-    if (socketRef) return; // Prevent duplicate connections
-    
-    const newSocket = io('http://localhost:5000', {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000
-    });
-    
-    socketRef = newSocket;
-    setSocket(newSocket);
-    
-    newSocket.on('connect', () => {
-      addLog("Real-time connection established");
-    });
-    
-    newSocket.on('connect_error', (error) => {
-      console.log('Socket connection error (normal):', error.message);
-      addLog("Real-time connection failed, using polling");
-    });
-  };
+  const newSocket = io(WS_URL, {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+  });
   
-  connectSocket();
+  // ... rest of your socket setup
+  
+  setSocket(newSocket);
   
   return () => {
-    if (socketRef) {
-      socketRef.disconnect();
-    }
+    newSocket.disconnect();
   };
-}, []); // Keep empty dependency array
+}, []);// Keep empty dependency array
 
   // Listen for real-time updates
   // UserDashboard.jsx
