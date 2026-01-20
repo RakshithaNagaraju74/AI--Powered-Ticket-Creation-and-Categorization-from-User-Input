@@ -2331,7 +2331,7 @@ useEffect(() => {
   useEffect(() => {
     const checkAIStatus = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/health', { timeout: 5000 });
+        const response = await axios.get(`${API_BASE_URL}/api/health`, { timeout: 5000 });
         if (response.data.ai_service?.status === 'healthy') {
           setAiStatus('connected');
           addLog("AI Service: Connected and Ready");
@@ -2365,7 +2365,7 @@ useEffect(() => {
         return;
       }
       
-      const response = await axios.get('http://localhost:5000/api/notifications', {
+      const response = await axios.get(`${API_BASE_URL}/notifications`, {
         params: { userId: decoded.id },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2388,7 +2388,7 @@ useEffect(() => {
         return;
       }
       
-      await axios.put(`http://localhost:5000/api/notifications/${notificationId}/read`, {
+      await axios.put(`${API_BASE_URL}/notifications/${notificationId}/read`, {
         userId: decoded.id
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -2422,7 +2422,7 @@ useEffect(() => {
       
       // Update each notification
       for (const notification of unreadNotifications) {
-        await axios.put(`http://localhost:5000/api/notifications/${notification._id}/read`, {
+        await axios.put(`${API_BASE_URL}/notifications/${notification._id}/read`, {
           userId: decoded.id
         }, {
           headers: { Authorization: `Bearer ${token}` }
@@ -2453,7 +2453,7 @@ useEffect(() => {
         return;
       }
 
-      const ticketsRes = await axios.get('http://localhost:5000/api/tickets', {
+      const ticketsRes = await axios.get(`${API_BASE_URL}/tickets`, {
         params: { userId: decoded.id },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2479,7 +2479,7 @@ useEffect(() => {
   const fetchLiveStats = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/stats/live', {
+      const response = await axios.get(`${API_BASE_URL}/stats/live`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStats(response.data);
@@ -2572,7 +2572,7 @@ useEffect(() => {
       addLog("Tokenizing sentence vectors...");
       addLog("Running BERT Inference...");
 
-      const res = await axios.post('http://localhost:5000/api/tickets/generate', {
+      const res = await axios.post(`${API_BASE_URL}/tickets/generate`, {
         title: issue.title || 'Support Request',
         description: issue.description,
         userId: decoded.id
@@ -2644,7 +2644,7 @@ useEffect(() => {
     console.log("Submitting feedback payload:", payload);
 
     const response = await axios.post(
-      'http://localhost:5000/api/feedback',
+      `${API_BASE_URL}/feedback`,
       payload,
       { headers: { Authorization: `Bearer ${token}` } }
     );
