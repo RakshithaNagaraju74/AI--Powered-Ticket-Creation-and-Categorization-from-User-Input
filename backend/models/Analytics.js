@@ -1,41 +1,55 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
-const analyticsSchema = new mongoose.Schema({
-    date: {
-        type: Date,
-        required: true,
-        index: true
+const Analytics = sequelize.define('Analytics', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  date: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  metric: {
+    type: DataTypes.ENUM(
+      'tickets_created',
+      'tickets_resolved',
+      'avg_response_time',
+      'avg_resolution_time',
+      'customer_satisfaction',
+      'agent_efficiency',
+      'ai_accuracy'
+    ),
+    allowNull: false
+  },
+  value: {
+    type: DataTypes.FLOAT,
+    allowNull: false
+  },
+  breakdown: {
+    type: DataTypes.JSONB,
+    defaultValue: {}
+  }
+}, {
+  tableName: 'analytics',
+  timestamps: true,
+  createdAt: 'createdAt',
+  updatedAt: false,
+  indexes: [
+    {
+      name: 'analytics_date_idx',
+      fields: ['date']
     },
-    metric: {
-        type: String,
-        required: true,
-        enum: [
-            'tickets_created',
-            'tickets_resolved',
-            'avg_response_time',
-            'avg_resolution_time',
-            'customer_satisfaction',
-            'agent_efficiency',
-            'ai_accuracy'
-        ],
-        index: true
+    {
+      name: 'analytics_metric_idx',
+      fields: ['metric']
     },
-    value: {
-        type: Number,
-        required: true
-    },
-    breakdown: {
-        category: String,
-        priority: String,
-        agent: String
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
+    {
+      name: 'analytics_date_metric_idx',
+      fields: ['date', 'metric']
     }
+  ]
 });
 
-// Create compound index for efficient querying
-analyticsSchema.index({ date: 1, metric: 1 });
-
-module.exports = mongoose.model('Analytics', analyticsSchema);
+module.exports = Analytics;

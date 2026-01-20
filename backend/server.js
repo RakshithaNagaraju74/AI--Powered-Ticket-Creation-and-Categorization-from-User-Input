@@ -1,18 +1,20 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const axios = require('axios');
+const { Sequelize, Op, where, fn, col, literal } = require('sequelize');
 require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
+
 app.use(cors({
   origin: 'http://localhost:3000',
   credentials: true
 }));
 app.use(express.json());
+
 const io = new Server(server, { 
   cors: { 
     origin: "http://localhost:3000",
@@ -21,41 +23,55 @@ const io = new Server(server, {
   } 
 });
 
-
-const authRoutes = require('./routes/auth');
-const Ticket = require('./models/Ticket'); 
+// Import models
 const User = require('./models/User');
-// Make sure you're importing and using the auth routes correctly
-app.use('/api/auth', authRoutes);
+const Ticket = require('./models/Ticket');
 const Notification = require('./models/Notification');
+const Analytics = require('./models/Analytics');
 
+// Import routes
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
 
+// Initialize database
+const sequelize = require('./config/sequelize');
 
-
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URL || 'mongodb://localhost:27017/nexus_support')
-  .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.error("MongoDB connection error:", err));
-
-
+// Sync database
+sequelize.sync({ alter: true })
+  .then(() => console.log('Database synced successfully'))
+  .catch(err => console.error('Database sync error:', err));
 
 // --- LEADERBOARD API ---
 app.get('/api/agents/leaderboard', async (req, res) => {
   try {
-    const board = await Ticket.aggregate([
-      { $match: { status: "resolved", assignedTo: { $ne: null } } },
-      { $group: { _id: "$assignedTo", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 5 }
-    ]);
-    res.json(board);
+    const board = await Ticket.findAll({
+      where: {
+        status: "resolved",
+        assignedTo: { [Op.ne]: null }
+      },
+      attributes: [
+        'assignedTo',
+        [fn('COUNT', col('id')), 'count']
+      ],
+      group: ['assignedTo'],
+      order: [[literal('count'), 'DESC']],
+      limit: 5,
+      raw: true
+    });
+    
+    // Format response to match MongoDB structure
+    const formattedBoard = board.map(item => ({
+      _id: item.assignedTo,
+      count: item.count
+    }));
+    
+    res.json(formattedBoard);
   } catch (err) {
     console.error("Leaderboard error:", err);
     res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 });
 
-// --- TICKET GENERATION API ---
 // --- TICKET GENERATION API ---
 app.post('/api/tickets/generate', async (req, res) => {
   try {
@@ -72,7 +88,7 @@ app.post('/api/tickets/generate', async (req, res) => {
     // First, get user details
     let user;
     try {
-      user = await User.findById(userId);
+      user = await User.findByPk(userId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -115,11 +131,11 @@ app.post('/api/tickets/generate', async (req, res) => {
     const ticketData = {
       title: title,
       description: description,
-      userEmail: user.email, // Use the actual email from user document
+      userEmail: user.email,
+      userId: userId,
       category: aiResponse.data.category || "General",
-      priority: aiResponse.data.priority || "Medium",
+      priority: aiResponse.data.priority?.toLowerCase() || "medium",
       status: "open",
-      created_at: aiResponse.data.created_at || new Date().toISOString(),
       category_confidence: aiResponse.data.category_confidence || 0,
       priority_confidence: aiResponse.data.priority_confidence || 0,
       entities: aiResponse.data.entities || { devices: [], usernames: [], error_codes: [] }
@@ -127,35 +143,34 @@ app.post('/api/tickets/generate', async (req, res) => {
 
     console.log("Creating ticket with data:", ticketData);
 
-    const ticket = new Ticket(ticketData);
-    await ticket.save();
+    const ticket = await Ticket.create(ticketData);
     
     // Create notification for new ticket
-    const notification = new Notification({
+    await Notification.create({
       userEmail: user.email,
+      userId: userId,
       type: 'ticket_created',
       title: 'Ticket Created',
       message: `Your ticket "${title.substring(0, 50)}..." has been created`,
       data: {
-        ticketId: ticket._id,
+        ticketId: ticket.id,
         title: title,
         category: ticket.category,
         priority: ticket.priority
       },
       read: false
     });
-    await notification.save();
     
     // Emit socket event
     io.emit('ticket_created', {
-      ticketId: ticket._id,
+      ticketId: ticket.id,
       userEmail: user.email,
       category: ticket.category,
       priority: ticket.priority,
       timestamp: new Date()
     });
     
-    console.log("Ticket created successfully:", ticket._id);
+    console.log("Ticket created successfully:", ticket.id);
     res.json(ticket);
     
   } catch (err) {
@@ -168,16 +183,19 @@ app.post('/api/tickets/generate', async (req, res) => {
     });
   }
 });
-// Add this endpoint to your server.js
+
+// --- SUPPORT TEAM API ---
 app.get('/api/stats/support-team', async (req, res) => {
   try {
     // Count users with role 'agent'
-    const supportTeamCount = await User.countDocuments({ role: 'agent' });
+    const supportTeamCount = await User.count({ where: { role: 'agent' } });
     
     // Get list of active support agents
-    const supportTeam = await User.find({ role: 'agent' })
-      .select('name email department position')
-      .limit(10);
+    const supportTeam = await User.findAll({
+      where: { role: 'agent' },
+      attributes: ['name', 'email', 'department', 'position'],
+      limit: 10
+    });
     
     res.json({
       count: supportTeamCount,
@@ -189,9 +207,8 @@ app.get('/api/stats/support-team', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch support team data" });
   }
 });
+
 // --- DYNAMIC LIVE STATS API ---
-// server.js - Update the Live Stats endpoint
-// Update the live stats endpoint in server.js
 app.get('/api/stats/live', async (req, res) => {
   try {
     const now = new Date();
@@ -202,43 +219,49 @@ app.get('/api/stats/live', async (req, res) => {
     last30Days.setDate(last30Days.getDate() - 30);
 
     // 1. Count total support team members (users with role 'agent')
-    const supportTeamMembers = await User.countDocuments({ role: 'agent' });
+    const supportTeamMembers = await User.count({ where: { role: 'agent' } });
 
     // 2. DYNAMIC AGENT COUNT: Get from the Socket Map
     const onlineAgentsCount = Array.from(activeUsers.values())
       .filter(u => u.role === 'agent').length;
 
     // 3. Fetch Ticket counts
-    const ticketsToday = await Ticket.countDocuments({ 
-      created_at: { $gte: todayStart } 
+    const ticketsToday = await Ticket.count({ 
+      where: { 
+        created_at: { [Op.gte]: todayStart } 
+      } 
     });
     
-    const resolvedToday = await Ticket.countDocuments({ 
-      status: 'resolved', 
-      updatedAt: { $gte: todayStart } 
+    const resolvedToday = await Ticket.count({ 
+      where: { 
+        status: 'resolved', 
+        updatedAt: { [Op.gte]: todayStart } 
+      } 
     });
     
-    const activeTickets = await Ticket.countDocuments({ 
-      status: { $in: ['open', 'in_progress'] } 
+    const activeTickets = await Ticket.count({ 
+      where: { 
+        status: { [Op.in]: ['open', 'in_progress'] } 
+      } 
     });
 
     // 4. Calculate DYNAMIC average response time (in minutes)
-    // Get all resolved tickets from last 30 days for accurate calculation
-    const recentResolvedTickets = await Ticket.find({
-      status: 'resolved',
-      updatedAt: { $gte: last30Days },
-      created_at: { $exists: true },
-      updatedAt: { $exists: true }
-    }).select('created_at updatedAt');
+    const recentResolvedTickets = await Ticket.findAll({
+      where: {
+        status: 'resolved',
+        updatedAt: { [Op.gte]: last30Days },
+        created_at: { [Op.ne]: null },
+        updatedAt: { [Op.ne]: null }
+      },
+      attributes: ['created_at', 'updatedAt']
+    });
 
     let totalResponseTimeMinutes = 0;
     let responseTimeCount = 0;
     
     recentResolvedTickets.forEach(ticket => {
       if (ticket.created_at && ticket.updatedAt) {
-        const created = new Date(ticket.created_at);
-        const resolved = new Date(ticket.updatedAt);
-        const responseTimeMs = resolved - created;
+        const responseTimeMs = ticket.updatedAt - ticket.created_at;
         const responseTimeMinutes = Math.floor(responseTimeMs / (1000 * 60));
         
         // Only count reasonable response times (less than 7 days)
@@ -267,12 +290,14 @@ app.get('/api/stats/live', async (req, res) => {
     }
 
     // 5. Calculate DYNAMIC satisfaction rate from feedback
-    // Get all tickets with feedback from last 30 days
-    const feedbackTickets = await Ticket.find({
-      feedbackSubmitted: true,
-      feedbackRating: { $exists: true, $gte: 1, $lte: 5 },
-      feedbackDate: { $gte: last30Days }
-    }).select('feedbackRating');
+    const feedbackTickets = await Ticket.findAll({
+      where: {
+        feedbackSubmitted: true,
+        feedbackRating: { [Op.between]: [1, 5] },
+        feedbackDate: { [Op.gte]: last30Days }
+      },
+      attributes: ['feedbackRating']
+    });
 
     let satisfactionRate = 'N/A';
     if (feedbackTickets.length > 0) {
@@ -291,31 +316,37 @@ app.get('/api/stats/live', async (req, res) => {
       Math.round((resolvedToday / ticketsToday) * 100) : 0;
 
     // 7. Calculate overall resolution rate (last 30 days)
-    const totalTicketsLast30Days = await Ticket.countDocuments({
-      created_at: { $gte: last30Days }
+    const totalTicketsLast30Days = await Ticket.count({
+      where: { created_at: { [Op.gte]: last30Days } }
     });
     
-    const resolvedTicketsLast30Days = await Ticket.countDocuments({
-      status: 'resolved',
-      updatedAt: { $gte: last30Days }
+    const resolvedTicketsLast30Days = await Ticket.count({
+      where: { 
+        status: 'resolved',
+        updatedAt: { [Op.gte]: last30Days }
+      }
     });
     
     const overallResolutionRate = totalTicketsLast30Days > 0 ? 
       Math.round((resolvedTicketsLast30Days / totalTicketsLast30Days) * 100) : 0;
 
     // 8. Calculate today's vs yesterday comparison for trend
-    const ticketsYesterday = await Ticket.countDocuments({
-      created_at: { 
-        $gte: yesterdayStart,
-        $lt: todayStart
+    const ticketsYesterday = await Ticket.count({
+      where: { 
+        created_at: { 
+          [Op.gte]: yesterdayStart,
+          [Op.lt]: todayStart
+        }
       }
     });
     
-    const resolvedYesterday = await Ticket.countDocuments({
-      status: 'resolved',
-      updatedAt: { 
-        $gte: yesterdayStart,
-        $lt: todayStart
+    const resolvedYesterday = await Ticket.count({
+      where: { 
+        status: 'resolved',
+        updatedAt: { 
+          [Op.gte]: yesterdayStart,
+          [Op.lt]: todayStart
+        }
       }
     });
 
@@ -371,25 +402,28 @@ app.get('/api/stats/live', async (req, res) => {
     });
   }
 });
-// --- GET TICKETS API ---
+
 // --- GET TICKETS API ---
 app.get('/api/tickets', async (req, res) => {
   try {
     const { userEmail, userId } = req.query;
-    let query = {};
+    let where = {};
     
     if (userEmail) {
-      query.userEmail = userEmail;
+      where.userEmail = userEmail;
     } else if (userId) {
-      const user = await User.findById(userId);
+      const user = await User.findByPk(userId);
       if (user) {
-        query.userEmail = user.email;
+        where.userEmail = user.email;
       } else {
         return res.status(404).json({ error: "User not found" });
       }
     }
     
-    const tickets = await Ticket.find(query).sort({ created_at: -1 });
+    const tickets = await Ticket.findAll({ 
+      where,
+      order: [['created_at', 'DESC']] 
+    });
     res.json(tickets);
   } catch (err) { 
     console.error('Error fetching tickets:', err);
@@ -401,38 +435,35 @@ app.get('/api/tickets', async (req, res) => {
 app.patch('/api/tickets/:id/status', async (req, res) => {
   try {
     const { status, agentEmail } = req.body;
-    const ticket = await Ticket.findByIdAndUpdate(
-      req.params.id, 
-      { 
-        status: status, 
-        assignedTo: agentEmail,
-        updatedAt: new Date()
-      },
-      { new: true }
-    );
+    const ticket = await Ticket.findByPk(req.params.id);
     
     if (!ticket) {
       return res.status(404).json({ error: "Ticket not found" });
     }
     
+    ticket.status = status;
+    ticket.assignedTo = agentEmail;
+    ticket.updatedAt = new Date();
+    await ticket.save();
+    
     // Create notification for status update
-    const notification = new Notification({
+    await Notification.create({
       userEmail: ticket.userEmail,
+      userId: ticket.userId,
       type: 'status_updated',
       title: 'Ticket Status Updated',
-      message: `Your ticket #${ticket._id.toString().slice(-8).toUpperCase()} has been ${status}`,
+      message: `Your ticket #${ticket.id.slice(-8).toUpperCase()} has been ${status}`,
       data: {
-        ticketId: ticket._id,
+        ticketId: ticket.id,
         status: status,
         assignedTo: agentEmail
       },
       read: false
     });
-    await notification.save();
     
     // Emit socket event
     io.emit('ticket_updated', {
-      ticketId: ticket._id,
+      ticketId: ticket.id,
       status: status,
       userEmail: ticket.userEmail,
       timestamp: new Date()
@@ -446,7 +477,6 @@ app.patch('/api/tickets/:id/status', async (req, res) => {
 });
 
 // --- NOTIFICATIONS API ---
-// --- NOTIFICATIONS API ---
 app.get('/api/notifications', async (req, res) => {
   try {
     const { userEmail, userId } = req.query;
@@ -455,21 +485,20 @@ app.get('/api/notifications', async (req, res) => {
       return res.status(400).json({ error: "User email or ID is required" });
     }
     
-    let query = {};
-    if (userEmail) {
-      query.userEmail = userEmail;
-    } else if (userId) {
-      // If you're using userId, you need to fetch user to get email first
-      const user = await User.findById(userId);
+    let userEmailToQuery = userEmail;
+    if (!userEmail && userId) {
+      const user = await User.findByPk(userId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      query.userEmail = user.email;
+      userEmailToQuery = user.email;
     }
     
-    const notifications = await Notification.find(query)
-      .sort({ createdAt: -1 })
-      .limit(20);
+    const notifications = await Notification.findAll({
+      where: { userEmail: userEmailToQuery },
+      order: [['createdAt', 'DESC']],
+      limit: 20
+    });
     
     res.json(notifications);
   } catch (err) {
@@ -479,7 +508,6 @@ app.get('/api/notifications', async (req, res) => {
 });
 
 // Mark notification as read
-// Mark notification as read
 app.put('/api/notifications/:id/read', async (req, res) => {
   try {
     const { userId } = req.body;
@@ -488,26 +516,25 @@ app.put('/api/notifications/:id/read', async (req, res) => {
       return res.status(400).json({ error: "User ID is required" });
     }
     
-    const user = await User.findById(userId);
+    const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
     
-    const notification = await Notification.findOneAndUpdate(
-      { 
-        _id: req.params.id, 
+    const notification = await Notification.findOne({
+      where: { 
+        id: req.params.id, 
         userEmail: user.email 
-      },
-      { 
-        read: true, 
-        readAt: new Date() 
-      },
-      { new: true }
-    );
+      }
+    });
     
     if (!notification) {
       return res.status(404).json({ error: "Notification not found or unauthorized" });
     }
+    
+    notification.read = true;
+    notification.readAt = new Date();
+    await notification.save();
     
     res.json(notification);
   } catch (err) {
@@ -515,12 +542,16 @@ app.put('/api/notifications/:id/read', async (req, res) => {
     res.status(500).json({ error: "Failed to update notification" });
   }
 });
+
 // --- PROFILE API ENDPOINTS ---
 
 // Get user profile by ID
 app.get('/api/auth/profile/:id', async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password -__v');
+    const user = await User.findByPk(req.params.id, {
+      attributes: { exclude: ['password'] }
+    });
+    
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -542,25 +573,21 @@ app.put('/api/auth/profile/:id', async (req, res) => {
     const userId = req.params.id;
     
     // Find user and update
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          name: name,
-          phone: phone,
-          department: department,
-          position: position,
-          notificationsEnabled: notifications,
-          newsletterSubscribed: newsletter,
-          updatedAt: new Date()
-        }
-      },
-      { new: true, select: '-password -__v' }
-    );
+    const user = await User.findByPk(userId);
     
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
+    
+    user.name = name;
+    user.phone = phone;
+    user.department = department;
+    user.position = position;
+    user.notificationsEnabled = notifications;
+    user.newsletterSubscribed = newsletter;
+    user.updatedAt = new Date();
+    
+    await user.save();
     
     res.json({
       success: true,
@@ -583,7 +610,7 @@ app.put('/api/auth/change-password', async (req, res) => {
     }
     
     // Find user
-    const user = await User.findById(userId);
+    const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -591,8 +618,8 @@ app.put('/api/auth/change-password', async (req, res) => {
     // In a real application, you should verify current password
     // For now, we'll assume validation is done by authentication middleware
     
-    // Update password
-    user.password = newPassword; // Note: In production, you should hash this
+    // Update password (Note: In production, you should hash this)
+    user.password = newPassword;
     user.updatedAt = new Date();
     await user.save();
     
@@ -616,30 +643,45 @@ app.get('/api/user/export-data', async (req, res) => {
     }
     
     // Find user
-    const user = await User.findById(userId).select('-password -__v');
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] }
+    });
+    
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
     
     // Get user's tickets
-    const tickets = await Ticket.find({ userEmail: user.email })
-      .select('-__v')
-      .sort({ created_at: -1 });
+    const tickets = await Ticket.findAll({
+      where: { userEmail: user.email },
+      order: [['created_at', 'DESC']]
+    });
     
     // Get user's notifications
-    const notifications = await Notification.find({ userEmail: user.email })
-      .select('-__v')
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const notifications = await Notification.findAll({
+      where: { userEmail: user.email },
+      order: [['createdAt', 'DESC']],
+      limit: 50
+    });
     
     // Get user's feedback
     const feedbackTickets = tickets.filter(ticket => 
       ticket.feedbackSubmitted && ticket.feedbackRating
     );
     
+    // Calculate favorite category
+    const categoryCount = {};
+    tickets.forEach(ticket => {
+      if (ticket.category) {
+        categoryCount[ticket.category] = (categoryCount[ticket.category] || 0) + 1;
+      }
+    });
+    
+    const favoriteCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'No tickets';
+    
     const exportData = {
       user: {
-        _id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -656,18 +698,12 @@ app.get('/api/user/export-data', async (req, res) => {
         feedbackProvided: feedbackTickets.length,
         averageRating: feedbackTickets.length > 0 ? 
           (feedbackTickets.reduce((sum, ticket) => sum + ticket.feedbackRating, 0) / feedbackTickets.length).toFixed(2) : 0,
-        favoriteCategory: tickets.length > 0 ? 
-          Object.entries(
-            tickets.reduce((acc, ticket) => {
-              acc[ticket.category] = (acc[ticket.category] || 0) + 1;
-              return acc;
-            }, {})
-          ).sort((a, b) => b[1] - a[1])[0]?.[0] : 'No tickets'
+        favoriteCategory: favoriteCategory
       },
       tickets: tickets,
       notifications: notifications,
       feedback: feedbackTickets.map(ticket => ({
-        ticketId: ticket._id,
+        ticketId: ticket.id,
         ticketTitle: ticket.title,
         rating: ticket.feedbackRating,
         comment: ticket.feedbackComment,
@@ -686,8 +722,9 @@ app.get('/api/user/export-data', async (req, res) => {
     res.status(500).json({ error: "Failed to export user data" });
   }
 });
-// --- LIVE STATS API ---
-app.get('/api/stats/live', async (req, res) => {
+
+// --- LIVE STATS API (Simplified) ---
+app.get('/api/stats/live/simple', async (req, res) => {
   try {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -695,13 +732,19 @@ app.get('/api/stats/live', async (req, res) => {
     weekStart.setDate(weekStart.getDate() - 7);
 
     // Get all tickets
-    const allTickets = await Ticket.find({});
+    const allTickets = await Ticket.findAll();
     
     // Calculate active agents (agents with tickets assigned in last 4 hours)
     const fourHoursAgo = new Date(now.getTime() - (4 * 60 * 60 * 1000));
-    const activeAgents = [...new Set(allTickets
-      .filter(t => t.assignedTo && t.updatedAt > fourHoursAgo)
-      .map(t => t.assignedTo))].length;
+    const activeAgentsSet = new Set();
+    
+    allTickets.forEach(ticket => {
+      if (ticket.assignedTo && ticket.updatedAt > fourHoursAgo) {
+        activeAgentsSet.add(ticket.assignedTo);
+      }
+    });
+    
+    const activeAgents = activeAgentsSet.size;
 
     // Calculate tickets created today
     const ticketsToday = allTickets.filter(ticket => 
@@ -770,7 +813,6 @@ app.get('/api/stats/live', async (req, res) => {
 });
 
 // --- FEEDBACK API ---
-// --- FEEDBACK API ---
 app.post('/api/feedback', async (req, res) => {
   try {
     const { ticketId, rating, comment, userId } = req.body;
@@ -782,13 +824,13 @@ app.post('/api/feedback', async (req, res) => {
     }
     
     // Get user first
-    const user = await User.findById(userId);
+    const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
     
     // Find the ticket first
-    const ticket = await Ticket.findById(ticketId);
+    const ticket = await Ticket.findByPk(ticketId);
     
     if (!ticket) {
       return res.status(404).json({ error: "Ticket not found" });
@@ -815,8 +857,9 @@ app.post('/api/feedback', async (req, res) => {
     await ticket.save();
     
     // Create a notification for the user
-    const userNotification = new Notification({
+    await Notification.create({
       userEmail: user.email,
+      userId: userId,
       type: 'feedback_submitted',
       title: 'Feedback Submitted',
       message: `Thank you for your ${rating}-star feedback`,
@@ -828,7 +871,6 @@ app.post('/api/feedback', async (req, res) => {
       },
       read: false
     });
-    await userNotification.save();
     
     // Emit socket event for system-wide updates
     io.emit('feedback_added', {
@@ -842,7 +884,7 @@ app.post('/api/feedback', async (req, res) => {
       success: true,
       message: "Feedback submitted successfully",
       ticket: {
-        _id: ticket._id,
+        id: ticket.id,
         feedbackSubmitted: ticket.feedbackSubmitted,
         feedbackRating: ticket.feedbackRating,
         feedbackDate: ticket.feedbackDate
@@ -858,11 +900,11 @@ app.post('/api/feedback', async (req, res) => {
 });
 
 // --- HEALTH CHECK API ---
-// In your server.js, update the health check function:
-
-// --- HEALTH CHECK API ---
 app.get('/api/health', async (req, res) => {
   try {
+    // Test database connection
+    await sequelize.authenticate();
+    
     // Try to connect to AI service
     let aiHealth;
     try {
@@ -884,7 +926,7 @@ app.get('/api/health', async (req, res) => {
     
     res.json({
       status: 'healthy',
-      mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      database: 'connected',
       ai_service: aiHealth,
       backend: 'running',
       timestamp: new Date().toISOString()
@@ -936,7 +978,6 @@ app.get('/api/test-ai', async (req, res) => {
     });
   }
 });
-// Add these routes BEFORE app.use('/api/auth', authRoutes);
 
 // Get user by ID
 app.get('/api/auth/user/:id', async (req, res) => {
@@ -944,14 +985,17 @@ app.get('/api/auth/user/:id', async (req, res) => {
     console.log('Dashboard: Fetching user for ID:', req.params.id);
     
     // Only return essential fields for dashboard
-    const user = await User.findById(req.params.id).select('name email role'); 
+    const user = await User.findByPk(req.params.id, {
+      attributes: ['id', 'name', 'email', 'role']
+    }); 
+    
     if (!user) return res.status(404).json({ error: "User not found" });
     
-    console.log('Dashboard: User found:', { id: user._id, name: user.name, email: user.email });
+    console.log('Dashboard: User found:', { id: user.id, name: user.name, email: user.email });
     
     res.json({ 
       user: {
-        _id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email,
         role: user.role || 'user'
@@ -963,54 +1007,7 @@ app.get('/api/auth/user/:id', async (req, res) => {
   }
 });
 
-// Get user profile (same as above but with different path)
-app.get('/api/auth/profile/:id', async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id).select('-password -__v');
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    res.json({ user });
-  } catch (err) {
-    console.error('Error fetching profile:', err);
-    res.status(500).json({ error: "Failed to fetch profile" });
-  }
-});
-
-// Change password
-app.put('/api/auth/change-password', async (req, res) => {
-  try {
-    const { userId, currentPassword, newPassword } = req.body;
-    
-    if (!userId || !newPassword) {
-      return res.status(400).json({ error: "All fields are required" });
-    }
-    
-    // Find user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    
-    // In production, you should verify currentPassword first
-    // For now, we'll just update the password
-    user.password = newPassword; // Note: You should hash this password
-    user.updatedAt = new Date();
-    await user.save();
-    
-    res.json({
-      success: true,
-      message: "Password changed successfully"
-    });
-  } catch (err) {
-    console.error('Error changing password:', err);
-    res.status(500).json({ error: "Failed to change password" });
-  }
-});
 // --- SOCKET.IO FOR REAL-TIME UPDATES ---
-// --- DYNAMIC AGENT TRACKING ---
-// server.js
-// --- DYNAMIC AGENT TRACKING ---
 const activeUsers = new Map(); 
 
 io.on('connection', (socket) => {
@@ -1046,10 +1043,12 @@ io.on('connection', (socket) => {
     console.log('Client disconnected:', socket.id);
   });
 });
+
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
   console.log(`Test AI connection: http://localhost:${PORT}/api/test-ai`);
+  console.log(`PostgreSQL Host: ${process.env.PGHOST || 'dpg-d5nss0uid0rc73f7bp20-a'}`);
 });

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import { API_BASE_URL } from '../config';
 import { 
+
   Settings, LogOut, Send, Activity, Clock, Cpu, 
   Search, Shield, Database, Zap, Monitor,
   MessageSquare, LifeBuoy, CheckCircle2, AlertCircle, 
@@ -102,7 +104,7 @@ const FeedbackModal = ({ ticketId, ticketTitle, isOpen, onClose, onSubmit }) => 
         return;
       }
       
-      const response = await axios.post('http://localhost:5000/api/feedback', {
+      const response = await axios.post('API_BASE_URL/feedback', {
         ticketId,
         rating,
         comment: comment.trim() || undefined,
@@ -1326,7 +1328,7 @@ const ProfileSection = ({ theme, userData, tickets }) => {
         const token = localStorage.getItem('token');
         if (!token) return;
         
-        const response = await axios.get(`http://localhost:5000/api/auth/profile/${userData.id}`, {
+        const response = await axios.get(`${API_BASE_URL}/auth/profile/${userData.id}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -1424,7 +1426,7 @@ const ProfileSection = ({ theme, userData, tickets }) => {
         return;
       }
       
-      const response = await axios.put(`http://localhost:5000/api/auth/profile/${decoded.id}`, {
+      const response = await axios.put(`${API_BASE_URL}/auth/profile/${decoded.id}`, {
         name: formData.name,
         phone: formData.phone,
         department: formData.department,
@@ -1475,7 +1477,7 @@ const ProfileSection = ({ theme, userData, tickets }) => {
         return;
       }
       
-      await axios.put(`http://localhost:5000/api/auth/change-password`, {
+      await axios.put(`${API_BASE_URL}/auth/change-password`, {
         userId: decoded.id,
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword
@@ -1507,7 +1509,7 @@ const ProfileSection = ({ theme, userData, tickets }) => {
         return;
       }
       
-      const response = await axios.get(`http://localhost:5000/api/user/export-data`, {
+      const response = await axios.get(`${API_BASE_URL}/user/export-data`, {
         params: { userId: decoded.id },
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -2298,7 +2300,7 @@ const fetchUserData = async () => {
     console.log('Fetching user data for ID:', decoded.id);
     
     // Use the correct endpoint for dashboard
-    const response = await axios.get(`http://localhost:5000/api/auth/user/${decoded.id}`, {
+    const response = await axios.get(`${API_BASE_URL}/auth/user/${decoded.id}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     

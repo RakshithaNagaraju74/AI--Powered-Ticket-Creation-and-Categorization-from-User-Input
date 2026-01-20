@@ -1,65 +1,80 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
-const notificationSchema = new mongoose.Schema({
-    userEmail: {
-        type: String,
-        required: true,
-        index: true
+const Notification = sequelize.define('Notification', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  userEmail: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
+  type: {
+    type: DataTypes.ENUM(
+      'ticket_created', 
+      'status_updated', 
+      'assigned', 
+      'feedback_submitted',
+      'priority_changed',
+      'sla_breach',
+      'ai_insight',
+      'team_message'
+    ),
+    allowNull: false
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  message: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  data: {
+    type: DataTypes.JSONB,
+    defaultValue: {}
+  },
+  read: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  readAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  priority: {
+    type: DataTypes.ENUM('low', 'medium', 'high', 'critical'),
+    defaultValue: 'medium'
+  },
+  expiresAt: {
+    type: DataTypes.DATE,
+    defaultValue: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  }
+}, {
+  tableName: 'notifications',
+  timestamps: true,
+  createdAt: 'createdAt',
+  updatedAt: false,
+  indexes: [
+    {
+      name: 'notifications_userEmail_idx',
+      fields: ['userEmail']
     },
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+    {
+      name: 'notifications_createdAt_idx',
+      fields: ['createdAt']
     },
-    type: {
-        type: String,
-        enum: [
-            'ticket_created', 
-            'status_updated', 
-            'assigned', 
-            'feedback_submitted',
-            'priority_changed',
-            'sla_breach',
-            'ai_insight',
-            'team_message'
-        ],
-        required: true
-    },
-    title: {
-        type: String,
-        required: true
-    },
-    message: {
-        type: String,
-        required: true
-    },
-    data: {
-        type: mongoose.Schema.Types.Mixed,
-        default: {}
-    },
-    read: {
-        type: Boolean,
-        default: false
-    },
-    readAt: {
-        type: Date
-    },
-    priority: {
-        type: String,
-        enum: ['low', 'medium', 'high', 'critical'],
-        default: 'medium'
-    },
-    expiresAt: {
-        type: Date,
-        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-        index: true
+    {
+      name: 'notifications_expiresAt_idx',
+      fields: ['expiresAt']
     }
+  ]
 });
 
-// Auto-delete expired notifications
-notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-
-module.exports = mongoose.model('Notification', notificationSchema);
+module.exports = Notification;

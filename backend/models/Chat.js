@@ -1,43 +1,59 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/sequelize');
 
-const chatSchema = new mongoose.Schema({
-    ticketId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Ticket',
-        index: true
+const Chat = sequelize.define('Chat', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  ticketId: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
+  sender: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  senderEmail: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  message: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  attachments: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  },
+  isSystem: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  readBy: {
+    type: DataTypes.JSONB,
+    defaultValue: []
+  }
+}, {
+  tableName: 'chats',
+  timestamps: true,
+  createdAt: 'createdAt',
+  updatedAt: false,
+  indexes: [
+    {
+      name: 'chats_ticketId_idx',
+      fields: ['ticketId']
     },
-    sender: {
-        type: String,
-        required: true
+    {
+      name: 'chats_senderEmail_idx',
+      fields: ['senderEmail']
     },
-    senderEmail: {
-        type: String,
-        required: true,
-        index: true
-    },
-    message: {
-        type: String,
-        required: true
-    },
-    attachments: [{
-        filename: String,
-        url: String,
-        type: String,
-        size: Number
-    }],
-    isSystem: {
-        type: Boolean,
-        default: false
-    },
-    readBy: [{
-        userEmail: String,
-        readAt: Date
-    }],
-    createdAt: {
-        type: Date,
-        default: Date.now,
-        index: true
+    {
+      name: 'chats_createdAt_idx',
+      fields: ['createdAt']
     }
+  ]
 });
 
-module.exports = mongoose.model('Chat', chatSchema);
+module.exports = Chat;

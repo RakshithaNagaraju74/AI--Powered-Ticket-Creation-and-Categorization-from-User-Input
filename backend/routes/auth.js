@@ -4,56 +4,93 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const router = express.Router();
 
-
 // REGISTER
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
-    let user = await User.findOne({ email });
-    if (user) return res.status(400).json({ msg: "User already exists" });
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ msg: "User already exists" });
+    }
 
+    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    user = new User({ name, email, password: hashedPassword, role: role || 'user' });
-    await user.save();
-    res.json({ msg: "Registration successful" });
+    // Create new user
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role: role || 'user'
+    });
+
+    res.json({ 
+      msg: "Registration successful",
+      userId: user.id 
+    });
   } catch (err) {
-    res.status(500).send("Server error");
+    console.error('Registration error:', err);
+    res.status(500).json({ msg: "Server error", error: err.message });
   }
 });
 
-// LOGIN (Used by both Auth and DevAuth)
+// LOGIN
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "Invalid credentials" });
+    
+    // Find user
+    const user = await User.findOne({ where: { email } });
+    if (!user) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
 
+    // Check password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
 
+    // Create JWT token
     const token = jwt.sign(
-      { id: user._id, role: user.role }, 
-      process.env.JWT_SECRET, 
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '1h' }
     );
 
     res.json({
       token,
-      user: { id: user._id, name: user.name, role: user.role }
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email,
+        role: user.role 
+      }
     });
   } catch (err) {
-    res.status(500).send("Server error");
+    console.error('Login error:', err);
+    res.status(500).json({ msg: "Server error" });
   }
 });
+
+// GET USER BY ID
 router.get('/user/:id', async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
-    if (!user) return res.status(404).json({ msg: "User not found" });
+    const user = await User.findByPk(req.params.id, {
+      attributes: { exclude: ['password'] }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ msg: "User not found" });
+    }
+    
     res.json(user);
   } catch (err) {
-    res.status(500).send("Server error");
+    console.error('Get user error:', err);
+    res.status(500).json({ msg: "Server error" });
   }
 });
 

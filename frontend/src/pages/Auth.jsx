@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from '../config';
 import { 
   ArrowRight, Lock, User, Mail, Cpu, Sparkles,
   Eye, EyeOff, Shield, Server, Zap, Brain,
@@ -44,7 +45,7 @@ const Auth = () => {
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const res = await axios.post(`http://localhost:5000${endpoint}`, formData);
+      const res = await axios.post(`${API_BASE_URL}${endpoint}`, formData);
       
       if (!isLogin) {
         alert("Account Registered Successfully! Please sign in.");

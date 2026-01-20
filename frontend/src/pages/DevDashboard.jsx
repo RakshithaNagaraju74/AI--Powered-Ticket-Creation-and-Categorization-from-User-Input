@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../config';
 import { 
   ShieldCheck, Layout, Clock, CheckCircle, AlertCircle, Search, Filter, 
   Smartphone, ShieldAlert, BarChart3, RefreshCcw, LogOut, Terminal, 
@@ -107,13 +108,13 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
     if (!isSilent) setLoading(true);
     try {
       // Fetch tickets
-      const ticketsRes = await axios.get('http://localhost:5000/api/tickets');
+      const ticketsRes = await axios.get(`${API_BASE_URL}/tickets`);
       const ticketsData = ticketsRes.data || [];
       setTickets(ticketsData);
       
       // Fetch leaderboard
       try {
-        const leaderboardRes = await axios.get('http://localhost:5000/api/agents/leaderboard');
+        const leaderboardRes = await axios.get(`${API_BASE_URL}/agents/leaderboard`);
         setLeaderboard(leaderboardRes.data || []);
       } catch (err) {
         console.log("Leaderboard endpoint not available");
@@ -418,7 +419,7 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
   // --- ACTION FUNCTIONS ---
   const updateStatus = async (id, newStatus) => {
     try {
-      await axios.patch(`http://localhost:5000/api/tickets/${id}/status`, { 
+      await axios.patch(`${API_BASE_URL}/tickets/${id}/status`, { 
         status: newStatus, 
         agentEmail: agent.email,
       });
@@ -446,7 +447,7 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
 
   const assignToAgent = async (ticketId, agentName) => {
     try {
-      await axios.patch(`http://localhost:5000/api/tickets/${ticketId}/assign`, { agent: agentName });
+      await axios.patch(`${API_BASE_URL}/tickets/${ticketId}/assign`, { agent: agentName });
       setTickets(prev => prev.map(t => t._id === ticketId ? { ...t, assignedTo: agentName } : t));
       if (selectedTicket?._id === ticketId) {
         setSelectedTicket({ ...selectedTicket, assignedTo: agentName });
