@@ -273,7 +273,7 @@ const Landing = () => {
               borderRadius: '50%',
               animation: 'pulse 2s infinite'
             }} />
-            <span>Research Grade • IEEE v2.4 • Now Live</span>
+            <span>Enterprise Grade •  v2.4 • Now Live</span>
           </div>
 
           <h1 style={{

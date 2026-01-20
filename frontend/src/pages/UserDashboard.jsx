@@ -513,11 +513,11 @@ const LiveStats = ({ theme, stats, loading }) => {
   // Update statItems to use dynamic values
   const statItems = [
     { 
-      label: 'Support Team', 
+      label: 'Online', 
       value: stats.supportTeamMembers || 0,
       color: '#6366f1', 
       icon: <Users size={16} />,
-      description: 'Total support team members'
+      description: 'Total members online'
     },
     { 
       label: 'Avg Response', 
@@ -2627,65 +2627,82 @@ useEffect(() => {
   };
 
   const handleFeedbackSubmit = async (feedbackData) => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Please login again');
-        window.location.href = '/auth';
-        return;
-      }
-      
-      if (!userData?.id) {
-        alert('User session expired. Please login again.');
-        window.location.href = '/auth';
-        return;
-      }
-      
-      const response = await axios.post('http://localhost:5000/api/feedback', {
-        ticketId: selectedTicket._id,
-        rating: feedbackData.rating,
-        comment: feedbackData.comment,
-        userId: userData.id
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Update the ticket in local state
-      setTickets(prev => prev.map(t => 
-        t._id === selectedTicket._id ? { 
-          ...t, 
-          feedbackSubmitted: true, 
-          feedbackRating: feedbackData.rating,
-          feedbackComment: feedbackData.comment
-        } : t
-      ));
-      
-      setShowFeedbackModal(false);
-      addLog("Feedback submitted successfully!");
-      
-      // Show success message
-      setTimeout(() => {
-        alert('Thank you for your feedback! Your input helps us improve our service.');
-      }, 100);
-      
-    } catch (error) {
-      console.error('Error submitting feedback:', error.response?.data || error);
-      
-      // Specific error handling based on backend response
-      const errorMessage = error.response?.data?.error || 
-                          error.response?.data?.message || 
-                          'Failed to submit feedback. Please try again.';
-      
-      alert(`Error: ${errorMessage}`);
-      
-      // If feedback already submitted, update local state
-      if (errorMessage.includes('already submitted')) {
-        setTickets(prev => prev.map(t => 
-          t._id === selectedTicket._id ? { ...t, feedbackSubmitted: true } : t
-        ));
-      }
+  if (
+    !userData?.email ||
+    !selectedTicket?._id ||
+    !feedbackData?.rating ||
+    !feedbackData?.comment
+  ) {
+    console.warn("Feedback blocked: required data not ready");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login again');
+      window.location.href = '/auth';
+      return;
     }
-  };
+
+    const payload = {
+      ticketId: selectedTicket._id,
+      rating: feedbackData.rating,
+      comment: feedbackData.comment,
+      userEmail: userData.email   // ✅ FIXED
+    };
+
+    console.log("Submitting feedback payload:", payload);
+
+    const response = await axios.post(
+      'http://localhost:5000/api/feedback',
+      payload,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    // Update ticket in local state
+    setTickets(prev =>
+      prev.map(t =>
+        t._id === selectedTicket._id
+          ? {
+              ...t,
+              feedbackSubmitted: true,
+              feedbackRating: feedbackData.rating,
+              feedbackComment: feedbackData.comment
+            }
+          : t
+      )
+    );
+
+    setShowFeedbackModal(false);
+    addLog("Feedback submitted successfully!");
+
+    setTimeout(() => {
+      alert('Thank you for your feedback! Your input helps us improve our service.');
+    }, 100);
+
+  } catch (error) {
+    console.error('Error submitting feedback:', error.response?.data || error);
+
+    const errorMessage =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      'Failed to submit feedback. Please try again.';
+
+    alert(`Error: ${errorMessage}`);
+
+    if (errorMessage.includes('already submitted')) {
+      setTickets(prev =>
+        prev.map(t =>
+          t._id === selectedTicket._id
+            ? { ...t, feedbackSubmitted: true }
+            : t
+        )
+      );
+    }
+  }
+};
+
 
   const handleViewTicketDetails = (ticket) => {
     if (!ticket) return;
