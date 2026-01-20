@@ -29,7 +29,10 @@ const Auth = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
+    console.log('=== DEBUG INFO ===');
+  console.log('API_BASE_URL:', API_BASE_URL);
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
     // Validate all fields are filled
     if (!formData.email.trim() || !formData.password.trim()) {
       setError('Please fill in all required fields');
