@@ -477,7 +477,7 @@ const Landing = () => {
                 fontWeight: '600',
                 letterSpacing: '1px'
               }}>
-                LIVE CLASSIFICATION PIPELINE
+                SAMPLE CLASSIFICATION PIPELINE
               </span>
             </div>
 

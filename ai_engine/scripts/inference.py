@@ -19,11 +19,14 @@ nltk.download('punkt')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Get the absolute path of the current script's directory (the 'scripts' folder)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Point to the models folder located one level above 'scripts'
-CATEGORY_MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "category_model")
-PRIORITY_MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "priority_model")
+# 2. Go up one level to the project root (e.g., .../ai_engine/)
+ROOT_DIR = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, ".."))
+
+# 3. Define model paths starting from the Root
+CATEGORY_MODEL_PATH = os.path.join(ROOT_DIR, "models", "category_model")
+PRIORITY_MODEL_PATH = os.path.join(ROOT_DIR, "models", "priority_model")
 
 # ===============================
 # Load Transformer Models

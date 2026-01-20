@@ -84,8 +84,8 @@ app.post('/api/tickets/generate', async (req, res) => {
     // Call AI service for classification
     let aiResponse;
     try {
-      console.log("Calling AI service at http://localhost:8000/classify");
-      aiResponse = await axios.post('http://localhost:8000/classify', {
+      console.log("Calling AI service at https://rakshh12-ai-ticketing-engine.hf.space");
+      aiResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
         title,
         description
       }, { 
@@ -107,7 +107,7 @@ app.post('/api/tickets/generate', async (req, res) => {
       return res.status(500).json({ 
         error: "AI classification service failed",
         details: aiError.message,
-        suggestion: "Please ensure the AI service is running on http://localhost:8000"
+        suggestion: "Please ensure the AI service is running on https://rakshh12-ai-ticketing-engine.hf.space"
       });
     }
 
@@ -866,7 +866,7 @@ app.get('/api/health', async (req, res) => {
     // Try to connect to AI service
     let aiHealth;
     try {
-      const response = await axios.get('http://localhost:8000/health', { 
+      const response = await axios.get('https://rakshh12-ai-ticketing-engine.hf.space/health', { 
         timeout: 5000 
       });
       aiHealth = {
@@ -908,7 +908,7 @@ app.get('/api/test-ai', async (req, res) => {
     
     console.log("Testing AI connection with data:", testData);
     
-    const response = await axios.post('http://localhost:8000/classify', testData, { 
+    const response = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', testData, { 
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json'
@@ -931,7 +931,7 @@ app.get('/api/test-ai', async (req, res) => {
       message: "AI service connection failed",
       error: error.message,
       details: error.response?.data || 'No response from AI service',
-      suggestion: "Make sure the AI service is running on http://localhost:8000",
+      suggestion: "Make sure the AI service is running on https://rakshh12-ai-ticketing-engine.hf.space",
       timestamp: new Date().toISOString()
     });
   }
