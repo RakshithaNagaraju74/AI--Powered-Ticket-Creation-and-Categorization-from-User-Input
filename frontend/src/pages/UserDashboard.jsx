@@ -81,47 +81,27 @@ const FeedbackModal = ({ ticketId, ticketTitle, isOpen, onClose, onSubmit }) => 
   const [error, setError] = useState('');
 
   const handleSubmit = async () => {
-    if (rating === 0) {
-      setError('Please select a rating');
-      return;
-    }
-    
-    setSubmitting(true);
-    setError('');
-    
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('Please login again');
-        window.location.href = '/auth';
-        return;
-      }
-      
-      const decoded = decodeToken(token);
-      if (!decoded || !decoded.id) {
-        setError('Invalid session. Please login again.');
-        window.location.href = '/auth';
-        return;
-      }
-      
-      const response = await axios.post('API_BASE_URL/feedback', {
-        ticketId,
-        rating,
-        comment: comment.trim() || undefined,
-        userId: decoded.id
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      onSubmit(response.data);
-      onClose();
-    } catch (error) {
-      console.error('Error submitting feedback:', error.response?.data || error);
-      setError(error.response?.data?.error || error.response?.data?.message || 'Failed to submit feedback. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  if (rating === 0) {
+    setError('Please select a rating');
+    return;
+  }
+  
+  setSubmitting(true);
+  setError('');
+  
+  try {
+    // Call parent's onSubmit with just rating and comment
+    await onSubmit({
+      rating: rating,
+      comment: comment.trim() // This can be empty string
+    });
+  } catch (err) {
+    console.error('Error in feedback modal:', err);
+    setError(err.message || 'Failed to submit feedback');
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   if (!isOpen) return null;
 
@@ -2633,13 +2613,11 @@ useEffect(() => {
   };
 
   const handleFeedbackSubmit = async (feedbackData) => {
-  if (
-    !userData?.email ||
-    !selectedTicket?._id ||
-    !feedbackData?.rating ||
-    !feedbackData?.comment
-  ) {
-    console.warn("Feedback blocked: required data not ready");
+  if (!selectedTicket?._id || !feedbackData?.rating) {
+    console.warn("Feedback blocked: Required data not ready");
+    console.log("Selected Ticket:", selectedTicket);
+    console.log("Feedback Data:", feedbackData);
+    console.log("User Data:", userData);
     return;
   }
 
@@ -2651,11 +2629,20 @@ useEffect(() => {
       return;
     }
 
+    // Get user ID from token
+    const decoded = decodeToken(token);
+    if (!decoded || !decoded.id) {
+      alert('Invalid session. Please login again.');
+      window.location.href = '/auth';
+      return;
+    }
+
+    // Prepare payload - Use userId instead of userEmail
     const payload = {
       ticketId: selectedTicket._id,
       rating: feedbackData.rating,
-      comment: feedbackData.comment,
-      userEmail: userData.email   // ✅ FIXED
+      comment: feedbackData.comment || "", // Comment is optional
+      userId: decoded.id
     };
 
     console.log("Submitting feedback payload:", payload);
@@ -2663,8 +2650,15 @@ useEffect(() => {
     const response = await axios.post(
       `${API_BASE_URL}/feedback`,
       payload,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { 
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
     );
+
+    console.log("Feedback response:", response.data);
 
     // Update ticket in local state
     setTickets(prev =>
@@ -2674,15 +2668,18 @@ useEffect(() => {
               ...t,
               feedbackSubmitted: true,
               feedbackRating: feedbackData.rating,
-              feedbackComment: feedbackData.comment
+              feedbackComment: feedbackData.comment || "",
+              feedbackDate: new Date().toISOString()
             }
           : t
       )
     );
 
     setShowFeedbackModal(false);
+    setSelectedTicket(null);
     addLog("Feedback submitted successfully!");
 
+    // Show success message
     setTimeout(() => {
       alert('Thank you for your feedback! Your input helps us improve our service.');
     }, 100);
@@ -2695,9 +2692,18 @@ useEffect(() => {
       error.response?.data?.message ||
       'Failed to submit feedback. Please try again.';
 
-    alert(`Error: ${errorMessage}`);
+    console.error('Full error:', error);
+    
+    if (error.response?.status === 403) {
+      alert('You are not authorized to provide feedback for this ticket.');
+    } else if (error.response?.status === 400) {
+      alert(errorMessage);
+    } else {
+      alert('Server error. Please try again later.');
+    }
 
-    if (errorMessage.includes('already submitted')) {
+    // Check if feedback already submitted
+    if (errorMessage.includes('already submitted') || errorMessage.includes('already submitted')) {
       setTickets(prev =>
         prev.map(t =>
           t._id === selectedTicket._id
@@ -3409,12 +3415,15 @@ useEffect(() => {
 
       {/* Feedback Modal */}
       <FeedbackModal
-        ticketId={selectedTicket?._id}
-        ticketTitle={selectedTicket?.title}
-        isOpen={showFeedbackModal}
-        onClose={() => setShowFeedbackModal(false)}
-        onSubmit={handleFeedbackSubmit}
-      />
+  ticketId={selectedTicket?._id}
+  ticketTitle={selectedTicket?.title}
+  isOpen={showFeedbackModal}
+  onClose={() => {
+    setShowFeedbackModal(false);
+    setSelectedTicket(null); // Clear selected ticket
+  }}
+  onSubmit={handleFeedbackSubmit} // This should match your function name
+/>
 
       {/* Ticket Details Modal */}
       {showTicketDetails && selectedTicketDetails && (
