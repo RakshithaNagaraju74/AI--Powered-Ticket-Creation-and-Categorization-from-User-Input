@@ -1027,7 +1027,8 @@ const CategoryDistribution = ({ theme, tickets }) => {
 
 // Enhanced Ticket Card
 const EnhancedTicketCard = ({ ticket, theme, onViewDetails, onGiveFeedback }) => {
-  const statusStyles = getStatusStyles(ticket);
+  const ticketId = ticket._id || ticket.id || 'N/A';
+  const displayTicketId = ticketId.length > 8 ? `#${ticketId.slice(-8).toUpperCase()}` : `#${ticketId}`;
 
   return (
     <div style={{
@@ -3425,6 +3426,10 @@ useEffect(() => {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <h3 style={{ fontSize: '20px', fontWeight: '800', margin: 0 }}>Ticket Details</h3>
+              <p style={{ fontSize: '12px', color: theme.muted, margin: '4px 0 0 0' }}>
+            {/* FIXED: Show ticket ID here */}
+            Ticket ID: #{selectedTicketDetails._id?.slice(-8).toUpperCase() || selectedTicketDetails.id?.slice(-8).toUpperCase() || 'N/A'}
+          </p>
               <button 
                 onClick={() => setShowTicketDetails(false)} 
                 style={{ 
@@ -3504,8 +3509,9 @@ useEffect(() => {
               <div>
                 <p style={{ fontSize: '12px', color: theme.muted, marginBottom: '4px' }}>Ticket ID</p>
                 <p style={{ fontWeight: '600', fontSize: '12px' }}>
-                  #{selectedTicketDetails._id?.slice(-8).toUpperCase()}
-                </p>
+            {/* FIXED: Show ticket ID in the grid */}
+            #{selectedTicketDetails._id?.slice(-8).toUpperCase() || selectedTicketDetails.id?.slice(-8).toUpperCase() || 'N/A'}
+          </p>
               </div>
 
               <div>
