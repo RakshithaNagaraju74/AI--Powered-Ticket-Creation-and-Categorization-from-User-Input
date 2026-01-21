@@ -417,48 +417,117 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
 }, [fetchAllData, isLive, refreshRate]); // 👈 Re-triggers when rate or live status changes
 
   // --- ACTION FUNCTIONS ---
-  const updateStatus = async (id, newStatus) => {
-    try {
-      await axios.patch(`${API_BASE_URL}/tickets/${id}/status`, { 
-        status: newStatus, 
-        agentEmail: agent.email,
-      });
-      setTickets(prev => prev.map(t => t._id === id ? { 
+ // --- ACTION FUNCTIONS ---
+const updateStatus = async (id, newStatus) => {
+  if (!id || id === 'undefined' || id === 'N/A') {
+    console.error('Invalid ticket ID:', id);
+    addActivity('❌ Cannot resolve: Invalid ticket ID', 'error');
+    alert('Cannot resolve ticket: Invalid ticket ID');
+    return;
+  }
+  
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login again');
+      window.location.href = '/auth';
+      return;
+    }
+    
+    console.log('Updating ticket:', id, 'to status:', newStatus);
+    
+    const response = await axios.patch(`${API_BASE_URL}/tickets/${id}/status`, { 
+      status: newStatus, 
+      agentEmail: agent.email,
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    console.log('Update response:', response.data);
+    
+    // Update local state
+    setTickets(prev => prev.map(t => {
+      const ticketId = t._id || t.id;
+      return ticketId === id ? { 
         ...t, 
         status: newStatus, 
         resolved_at: newStatus === 'resolved' ? new Date().toISOString() : t.resolved_at 
-      } : t));
-      
-      if (selectedTicket?._id === id) {
-        setSelectedTicket({ 
-          ...selectedTicket, 
-          status: newStatus, 
-          resolved_at: newStatus === 'resolved' ? new Date().toISOString() : selectedTicket.resolved_at 
-        });
-      }
-      
-      addActivity(`✅ SYNC_COMPLETE: Incident #${id.slice(-4)} archived`, "success");
-      fetchAllData(true);
-    } catch (err) { 
-      console.error("Update failed:", err);
-      addActivity(`❌ Failed to update ticket #${id.slice(-4)}`, "error");
+      } : t;
+    }));
+    
+    // Update selected ticket if it's the same
+    if (selectedTicket && (selectedTicket._id === id || selectedTicket.id === id)) {
+      setSelectedTicket({ 
+        ...selectedTicket, 
+        status: newStatus, 
+        resolved_at: newStatus === 'resolved' ? new Date().toISOString() : selectedTicket.resolved_at 
+      });
     }
-  };
+    
+    const displayId = id.toString().slice(-6).toUpperCase();
+    addActivity(`✅ Ticket #${displayId} marked as ${newStatus}`, "success");
+    
+    // Refresh data after a short delay
+    setTimeout(() => fetchAllData(true), 1000);
+    
+  } catch (err) { 
+    console.error("Update failed:", err.response?.data || err.message);
+    const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
+    addActivity(`❌ Failed to update ticket: ${errorMsg}`, "error");
+    alert(`Failed to update ticket: ${errorMsg}`);
+  }
+};
 
-  const assignToAgent = async (ticketId, agentName) => {
-    try {
-      await axios.patch(`${API_BASE_URL}/tickets/${ticketId}/assign`, { agent: agentName });
-      setTickets(prev => prev.map(t => t._id === ticketId ? { ...t, assignedTo: agentName } : t));
-      if (selectedTicket?._id === ticketId) {
-        setSelectedTicket({ ...selectedTicket, assignedTo: agentName });
-      }
-      addActivity(`👤 Assigned #${ticketId.slice(-4)} to ${agentName}`, "info");
-      fetchAllData(true);
-    } catch (err) {
-      console.error("Assignment failed:", err);
-      addActivity(`❌ Failed to assign ticket`, "error");
+const assignToAgent = async (ticketId, agentName) => {
+  if (!ticketId || ticketId === 'undefined' || ticketId === 'N/A') {
+    console.error('Invalid ticket ID for assignment:', ticketId);
+    addActivity('❌ Cannot assign: Invalid ticket ID', 'error');
+    alert('Cannot assign ticket: Invalid ticket ID');
+    return;
+  }
+  
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login again');
+      window.location.href = '/auth';
+      return;
     }
-  };
+    
+    console.log('Assigning ticket:', ticketId, 'to agent:', agentName);
+    
+    const response = await axios.patch(`${API_BASE_URL}/tickets/${ticketId}/assign`, { 
+      agent: agentName 
+    }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    console.log('Assignment response:', response.data);
+    
+    // Update local state
+    setTickets(prev => prev.map(t => {
+      const currentId = t._id || t.id;
+      return currentId === ticketId ? { ...t, assignedTo: agentName } : t;
+    }));
+    
+    // Update selected ticket if it's the same
+    if (selectedTicket && (selectedTicket._id === ticketId || selectedTicket.id === ticketId)) {
+      setSelectedTicket({ ...selectedTicket, assignedTo: agentName });
+    }
+    
+    const displayId = ticketId.toString().slice(-6).toUpperCase();
+    addActivity(`👤 Assigned #${displayId} to ${agentName}`, "info");
+    
+    // Refresh data after a short delay
+    setTimeout(() => fetchAllData(true), 1000);
+    
+  } catch (err) {
+    console.error("Assignment failed:", err.response?.data || err.message);
+    const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
+    addActivity(`❌ Failed to assign ticket: ${errorMsg}`, "error");
+    alert(`Failed to assign ticket: ${errorMsg}`);
+  }
+};
 
   const filteredTickets = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -482,22 +551,24 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
       
       {/* EMERGENCY MODAL */}
       {criticalPopup && (
-        <div style={styles.modalBackdrop}>
-           <div style={styles.modalBody}>
-              <div style={styles.modalHeader}><Flame size={32} /> CRITICAL_PRIORITY_DETECTED</div>
-              <h2 style={{ fontSize: '32px', margin: '20px 0', letterSpacing: '-2px' }}>{criticalPopup.title}</h2>
-              <p style={{ opacity: 0.8, marginBottom: '30px' }}>
-                Urgent attention required. Priority: {criticalPopup.priority?.toUpperCase()}
-                <br/>
-                Category: {criticalPopup.category || 'Unknown'}
-              </p>
-              <div style={{ display: 'flex', gap: '15px' }}>
-                <button onClick={() => { setSelectedTicket(criticalPopup); setCriticalPopup(null); }} style={styles.ackBtn}>TRIAGE_NOW</button>
-                <button onClick={() => setCriticalPopup(null)} style={styles.dismissBtn}>DISMISS</button>
-              </div>
-           </div>
-        </div>
-      )}
+  <div style={styles.modalBackdrop}>
+    <div style={styles.modalBody}>
+      <div style={styles.modalHeader}><Flame size={32} /> CRITICAL_PRIORITY_DETECTED</div>
+      <h2 style={{ fontSize: '32px', margin: '20px 0', letterSpacing: '-2px' }}>{criticalPopup.title}</h2>
+      <p style={{ opacity: 0.8, marginBottom: '30px' }}>
+        Ticket ID: #{criticalPopup._id?.slice(-6).toUpperCase() || criticalPopup.id?.slice(-6).toUpperCase() || 'N/A'}
+        <br/>
+        Urgent attention required. Priority: {criticalPopup.priority?.toUpperCase()}
+        <br/>
+        Category: {criticalPopup.category || 'Unknown'}
+      </p>
+      <div style={{ display: 'flex', gap: '15px' }}>
+        <button onClick={() => { setSelectedTicket(criticalPopup); setCriticalPopup(null); }} style={styles.ackBtn}>TRIAGE_NOW</button>
+        <button onClick={() => setCriticalPopup(null)} style={styles.dismissBtn}>DISMISS</button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* PRIORITY SPIKE ALERT */}
       {prioritySpike && (
@@ -761,7 +832,7 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
                         <div key={n._id} style={styles.notificationItem} onClick={() => {setSelectedTicket(n); setShowNotifications(false);}}>
                           <div style={styles.notificationTitle}>{n.title}</div>
                           <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: theme.muted}}>
-                            <span>{n.category}</span>
+                            <span>{displayTicketId} • {n.category}</span>
                             <span>{n.priority?.toUpperCase()}</span>
                           </div>
                         </div>
@@ -805,41 +876,46 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
                 </div>
               ) : (
                 filteredTickets.map(t => {
-                  const slaInfo = getSLATimeLeft(t.created_at, t.priority);
-                  return (
-                    <div key={t._id} style={styles.ticketCard(selectedTicket?._id === t._id)} onClick={() => setSelectedTicket(t)}>
-                      <div style={styles.cardHeader}>
-                        <span style={styles.ticketId}>#{t._id?.slice(-6).toUpperCase() || 'N/A'}</span>
-                        <span style={pBadge(t.priority)}>{t.priority?.toUpperCase()}</span>
-                      </div>
-                      <h4 style={styles.cardTitle}>{t.title}</h4>
-                      <div style={styles.cardMeta}>
-                         <div style={{...styles.dot, background: t.status === 'open' ? '#f59e0b' : theme.success}} />
-                         <span style={{color: t.status === 'resolved' ? theme.success : '#64748b'}}>{t.status?.toUpperCase()}</span>
-                         {t.category && (
-                           <>
-                             <div style={styles.vDivider} />
-                             <span style={{fontSize: '10px', color: theme.muted}}>{t.category}</span>
-                           </>
-                         )}
-                         {t.assignedTo && (
-                           <>
-                             <div style={styles.vDivider} />
-                             <UserCheck size={12} />
-                             <span style={{fontSize: '10px', color: theme.primary}}>{t.assignedTo}</span>
-                           </>
-                         )}
-                      </div>
-                      {slaInfo.isBreaching && t.status === 'open' && (
-                        <div style={styles.slaWarning}>
-                          <Clock3 size={12} />
-                          <span style={{fontSize: '10px', marginLeft: '5px'}}>
-                            SLA Breaching: {slaInfo.timeLeft} hrs left
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
+  const ticketId = t._id || t.id || 'N/A';
+  const displayTicketId = ticketId && ticketId !== 'N/A' 
+    ? `#${ticketId.toString().slice(-6).toUpperCase()}` 
+    : 'N/A';
+  
+  const slaInfo = getSLATimeLeft(t.created_at, t.priority);
+  return (
+    <div key={ticketId} style={styles.ticketCard(selectedTicket?._id === ticketId)} onClick={() => setSelectedTicket(t)}>
+      <div style={styles.cardHeader}>
+        <span style={styles.ticketId}>{displayTicketId}</span>
+        <span style={pBadge(t.priority)}>{t.priority?.toUpperCase()}</span>
+      </div>
+      <h4 style={styles.cardTitle}>{t.title}</h4>
+      <div style={styles.cardMeta}>
+        <div style={{...styles.dot, background: t.status === 'open' ? '#f59e0b' : theme.success}} />
+        <span style={{color: t.status === 'resolved' ? theme.success : '#64748b'}}>{t.status?.toUpperCase()}</span>
+        {t.category && (
+          <>
+            <div style={styles.vDivider} />
+            <span style={{fontSize: '10px', color: theme.muted}}>{t.category}</span>
+          </>
+        )}
+        {t.assignedTo && (
+          <>
+            <div style={styles.vDivider} />
+            <UserCheck size={12} />
+            <span style={{fontSize: '10px', color: theme.primary}}>{t.assignedTo}</span>
+          </>
+        )}
+      </div>
+      {slaInfo.isBreaching && t.status === 'open' && (
+        <div style={styles.slaWarning}>
+          <Clock3 size={12} />
+          <span style={{fontSize: '10px', marginLeft: '5px'}}>
+            SLA Breaching: {slaInfo.timeLeft} hrs left
+          </span>
+        </div>
+      )}
+    </div>
+  );
                 })
               )}
             </div>
@@ -883,36 +959,60 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
                     </div>
                   </div>
                   {selectedTicket.status === 'open' ? (
-                    <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
-                      {selectedTicket.assignedTo ? (
-                        <div style={styles.assignedBadge}>
-                          <UserCheck size={16} />
-                          <span>Assigned to: {selectedTicket.assignedTo}</span>
-                        </div>
-                      ) : (
-                        <select 
-                          style={styles.assignSelect}
-                          value=""
-                          onChange={(e) => assignToAgent(selectedTicket._id, e.target.value)}
-                        >
-                          <option value="">Assign to agent...</option>
-                          {agents.map(a => (
-                            <option key={a} value={a}>{a}</option>
-                          ))}
-                        </select>
-                      )}
-                      <button onClick={() => updateStatus(selectedTicket._id, 'resolved')} className="resolve-btn">
-                        <CheckCircle2 size={18}/> MARK_AS_SOLVED
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={styles.solvedLabel}>
-                      <CheckCircle size={20}/> INCIDENT_RESOLVED
-                      {selectedTicket.assignedTo && (
-                        <span style={{fontSize: '12px', marginLeft: '10px'}}>by {selectedTicket.assignedTo}</span>
-                      )}
-                    </div>
-                  )}
+  <div style={{display: 'flex', gap: '15px', alignItems: 'center'}}>
+    {selectedTicket.assignedTo ? (
+      <div style={styles.assignedBadge}>
+        <UserCheck size={16} />
+        <span>Assigned to: {selectedTicket.assignedTo}</span>
+      </div>
+    ) : (
+      <select 
+        style={styles.assignSelect}
+        value=""
+        onChange={(e) => {
+          const agentName = e.target.value;
+          if (agentName) {
+            const ticketId = selectedTicket._id || selectedTicket.id;
+            if (ticketId) {
+              assignToAgent(ticketId, agentName);
+            } else {
+              alert('Cannot assign: No valid ticket ID found');
+            }
+          }
+        }}
+      >
+        <option value="">Assign to agent...</option>
+        {agents.map(a => (
+          <option key={a} value={a}>{a}</option>
+        ))}
+      </select>
+    )}
+    <button 
+      onClick={() => {
+        // Get the ticket ID safely
+        const ticketId = selectedTicket._id || selectedTicket.id;
+        console.log('Resolving ticket with ID:', ticketId);
+        
+        if (ticketId && ticketId !== 'N/A' && ticketId !== 'undefined') {
+          updateStatus(ticketId, 'resolved');
+        } else {
+          console.error('Invalid ticket ID:', ticketId);
+          alert('Cannot resolve: No valid ticket ID found. Please select a ticket first.');
+        }
+      }} 
+      className="resolve-btn"
+    >
+      <CheckCircle2 size={18}/> MARK_AS_SOLVED
+    </button>
+  </div>
+) : (
+  <div style={styles.solvedLabel}>
+    <CheckCircle size={20}/> INCIDENT_RESOLVED
+    {selectedTicket.assignedTo && (
+      <span style={{fontSize: '12px', marginLeft: '10px'}}>by {selectedTicket.assignedTo}</span>
+    )}
+  </div>
+)}
                 </div>
 
                 <div style={styles.detailsGrid}>
@@ -1046,13 +1146,20 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
                               <span>Avg: {agent.avgResolutionHours}h</span>
                             </div>
                             {!selectedTicket.assignedTo && agent.activeTickets < 5 && (
-                              <button 
-                                onClick={() => assignToAgent(selectedTicket._id, agent.name)}
-                                style={styles.assignQuickBtn}
-                              >
-                                Assign to {agent.name.split(' ')[0]}
-                              </button>
-                            )}
+  <button 
+    onClick={() => {
+      const ticketId = selectedTicket._id || selectedTicket.id;
+      if (ticketId && ticketId !== 'N/A' && ticketId !== 'undefined') {
+        assignToAgent(ticketId, agent.name);
+      } else {
+        alert('Cannot assign: No valid ticket ID found');
+      }
+    }}
+    style={styles.assignQuickBtn}
+  >
+    Assign to {agent.name.split(' ')[0]}
+  </button>
+)}
                           </div>
                         ))
                       ) : (
