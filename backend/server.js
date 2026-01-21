@@ -10,33 +10,95 @@ const app = express();
 const server = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://ai-powered-ticket-creation-and-l700.onrender.com'
+  'https://ai-powered-ticket-creation-and-l700.onrender.com',
+  'https://ai-powered-ticket-creation-andl700.onrender.com',
+  /\.onrender\.com$/, // Allows any Render subdomain
+  /\.vercel\.app$/,   // Allows any Vercel deployment
 ];
-app.use(cors({
+
+const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps, curl, postman)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Check if origin matches allowed origins
+    for (let allowedOrigin of allowedOrigins) {
+      if (typeof allowedOrigin === 'string') {
+        if (allowedOrigin === origin) {
+          return callback(null, true);
+        }
+      } else if (allowedOrigin instanceof RegExp) {
+        if (allowedOrigin.test(origin)) {
+          return callback(null, true);
+        }
+      }
     }
+    
+    console.error(`CORS blocked for origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
-  credentials: true
-}));
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  maxAge: 86400, // 24 hours
+};
+
+app.use(cors(corsOptions));
+
+// ✅ Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 
+// ✅ UPDATED Socket.IO CORS
 const io = new Server(server, { 
   cors: { 
-    origin: [
-    'http://localhost:3000', // for local dev
-    'https://ai-powered-ticket-creation-and-l700.onrender.com' // your frontend URL
-  ],
-    methods: ["GET", "POST"],
-    credentials: true
-  } 
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      
+      for (let allowedOrigin of allowedOrigins) {
+        if (typeof allowedOrigin === 'string') {
+          if (allowedOrigin === origin) {
+            return callback(null, true);
+          }
+        } else if (allowedOrigin instanceof RegExp) {
+          if (allowedOrigin.test(origin)) {
+            return callback(null, true);
+          }
+        }
+      }
+      
+      console.error(`Socket.IO CORS blocked for origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
+
+// ✅ Add security headers
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  next();
+});
+
+// ✅ Debug middleware (optional, remove in production)
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    console.log(`Origin: ${req.headers.origin}`);
+    console.log(`User-Agent: ${req.headers['user-agent']}`);
+    next();
+  });
+}
 
 // Import models
 const User = require('./models/User');
@@ -86,7 +148,15 @@ app.get('/api/agents/leaderboard', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 });
-
+// Test CORS endpoint
+app.get('/api/cors-test', (req, res) => {
+  res.json({
+    message: 'CORS is working!',
+    allowedOrigins: allowedOrigins,
+    yourOrigin: req.headers.origin,
+    timestamp: new Date().toISOString()
+  });
+});
 // --- TICKET GENERATION API ---
 app.post('/api/tickets/generate', async (req, res) => {
   try {
