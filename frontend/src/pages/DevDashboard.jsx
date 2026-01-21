@@ -424,13 +424,26 @@ const updateStatus = async (id, newStatus) => {
   if (!id || id === 'undefined' || id === 'N/A') {
     console.error('Invalid ticket ID:', id);
     addActivity('❌ Cannot resolve: Ticket ID is missing', 'error');
-    return;
+    
+    // Try to get ID from selectedTicket as fallback
+    if (selectedTicket && (selectedTicket._id || selectedTicket.id)) {
+      id = selectedTicket._id || selectedTicket.id;
+      console.log('Using fallback ID from selectedTicket:', id);
+    } else {
+      return;
+    }
   }
   
   try {
     const token = localStorage.getItem('token');
+    if (!token) {
+      console.error('No token found');
+      addActivity('❌ Authentication required', 'error');
+      return;
+    }
     
     // 2. Network Call
+    console.log('Updating ticket:', id, 'to status:', newStatus);
     const response = await axios.patch(`${API_BASE_URL}/tickets/${id}/status`, { 
       status: newStatus, 
       agentEmail: agent.email,
@@ -937,10 +950,17 @@ const assignToAgent = async (ticketId, agentName) => {
       </select>
     )}
     <button 
-  disabled={!selectedTicket?._id} // Disable if no ID
-  onClick={() => updateStatus(selectedTicket._id || selectedTicket.id, 'resolved')} 
+  onClick={() => {
+    const ticketId = selectedTicket._id || selectedTicket.id;
+    if (ticketId) {
+      updateStatus(ticketId, 'resolved');
+    } else {
+      console.error('No ticket ID found:', selectedTicket);
+      addActivity('❌ Cannot resolve: No ticket ID found', 'error');
+    }
+  }} 
   className="resolve-btn"
-  style={{ opacity: !selectedTicket?._id ? 0.5 : 1 }}
+  style={{ opacity: !selectedTicket?._id && !selectedTicket?.id ? 0.5 : 1 }}
 >
   <CheckCircle2 size={18}/> MARK_AS_SOLVED
 </button>
