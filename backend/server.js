@@ -48,13 +48,7 @@ app.use(cors(corsOptions));
 
 // ✅ Handle preflight requests explicitly
 // ✅ Fixed - handle all OPTIONS requests
-app.options('/*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.status(200).end();
-});
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
