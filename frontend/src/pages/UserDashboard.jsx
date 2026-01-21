@@ -2375,7 +2375,25 @@ useEffect(() => {
       setNotifications([]);
     }
   };
+  const getStatusStyles = (ticket) => {
+    if (!ticket) return { background: '#f1f5f9', color: '#64748b', label: 'UNKNOWN' };
+    
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      return { background: '#f0fdf4', color: '#15803d', label: 'RESOLVED' };
+    }
 
+    const createdDate = new Date(ticket.created_at || ticket.createdAt || Date.now());
+    const now = new Date();
+    const diffInHours = (now - createdDate) / (1000 * 60 * 60);
+
+    if (diffInHours < 3) {
+      return { background: '#dcfce7', color: '#166534', label: 'NEW' };
+    } else if (diffInHours >= 3 && diffInHours < 6) {
+      return { background: '#fef3c7', color: '#92400e', label: 'PENDING' };
+    } else {
+      return { background: '#fee2e2', color: '#991b1b', label: 'OVERDUE' };
+    }
+  };
   // Mark single notification as read
   const handleMarkAsRead = async (notificationId) => {
     try {
