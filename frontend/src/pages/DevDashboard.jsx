@@ -777,12 +777,14 @@ const assignToAgent = async (ticketId, agentName) => {
                       <p style={{padding: 15, fontSize: 12}}>No active alerts</p> : 
                       criticalNotifications.map(n => (
                         <div key={n._id} style={styles.notificationItem} onClick={() => {setSelectedTicket(n); setShowNotifications(false);}}>
-                          <div style={styles.notificationTitle}>{n.title}</div>
-                          <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: theme.muted}}>
-                            <span>{displayTicketId} • {n.category}</span>
-                            <span>{n.priority?.toUpperCase()}</span>
-                          </div>
-                        </div>
+  <div style={styles.notificationTitle}>{n.title}</div>
+  <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 10, color: theme.muted}}>
+    <span>
+      #{n._id ? n._id.toString().slice(-6).toUpperCase() : n.id ? n.id.toString().slice(-6).toUpperCase() : 'N/A'} • {n.category}
+    </span>
+    <span>{n.priority?.toUpperCase()}</span>
+  </div>
+</div>
                       ))
                     }
                   </div>
