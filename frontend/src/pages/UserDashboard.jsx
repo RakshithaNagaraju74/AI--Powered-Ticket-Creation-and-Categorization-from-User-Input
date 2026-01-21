@@ -2613,8 +2613,12 @@ useEffect(() => {
   };
 
   const handleFeedbackSubmit = async (feedbackData) => {
-  if (!selectedTicket?._id || !feedbackData?.rating) {
+  // Get the ticket ID from either _id or id property
+  const ticketId = selectedTicket?._id || selectedTicket?.id;
+  
+  if (!ticketId || !feedbackData?.rating) {
     console.warn("Feedback blocked: Required data not ready");
+    console.log("Selected Ticket ID:", selectedTicket?._id || selectedTicket?.id);
     console.log("Selected Ticket:", selectedTicket);
     console.log("Feedback Data:", feedbackData);
     console.log("User Data:", userData);
@@ -2637,9 +2641,9 @@ useEffect(() => {
       return;
     }
 
-    // Prepare payload - Use userId instead of userEmail
+    // Prepare payload
     const payload = {
-      ticketId: selectedTicket._id,
+      ticketId: ticketId, // Use the correct ticket ID
       rating: feedbackData.rating,
       comment: feedbackData.comment || "", // Comment is optional
       userId: decoded.id
@@ -2660,10 +2664,11 @@ useEffect(() => {
 
     console.log("Feedback response:", response.data);
 
-    // Update ticket in local state
+    // Update ticket in local state - use the correct ticket ID
     setTickets(prev =>
-      prev.map(t =>
-        t._id === selectedTicket._id
+      prev.map(t => {
+        const currentTicketId = t._id || t.id;
+        return currentTicketId === ticketId
           ? {
               ...t,
               feedbackSubmitted: true,
@@ -2671,8 +2676,8 @@ useEffect(() => {
               feedbackComment: feedbackData.comment || "",
               feedbackDate: new Date().toISOString()
             }
-          : t
-      )
+          : t;
+      })
     );
 
     setShowFeedbackModal(false);
@@ -2703,13 +2708,14 @@ useEffect(() => {
     }
 
     // Check if feedback already submitted
-    if (errorMessage.includes('already submitted') || errorMessage.includes('already submitted')) {
+    if (errorMessage.includes('already submitted')) {
       setTickets(prev =>
-        prev.map(t =>
-          t._id === selectedTicket._id
+        prev.map(t => {
+          const currentTicketId = t._id || t.id;
+          return currentTicketId === ticketId
             ? { ...t, feedbackSubmitted: true }
-            : t
-        )
+            : t;
+        })
       );
     }
   }
