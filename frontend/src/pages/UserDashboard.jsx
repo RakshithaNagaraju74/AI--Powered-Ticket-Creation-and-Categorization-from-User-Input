@@ -1073,7 +1073,7 @@ const EnhancedTicketCard = ({ ticket, theme, onViewDetails, onGiveFeedback }) =>
               {statusStyles.label}
             </span>
             <span style={{ fontSize: '12px', color: theme.muted, fontWeight: '600' }}>
-              #{ticket._id?.slice(-8).toUpperCase()}
+               #{ticket.ticketId || ticket.id?.slice(0, 6)}
             </span>
           </div>
           
