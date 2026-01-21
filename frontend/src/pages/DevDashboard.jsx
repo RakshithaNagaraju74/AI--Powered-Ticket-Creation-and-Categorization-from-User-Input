@@ -418,24 +418,19 @@ const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); /
 
   // --- ACTION FUNCTIONS ---
  // --- ACTION FUNCTIONS ---
+// --- CORRECTED ACTION FUNCTIONS ---
 const updateStatus = async (id, newStatus) => {
+  // 1. Validation: Ensure ID exists and is not the string "undefined"
   if (!id || id === 'undefined' || id === 'N/A') {
     console.error('Invalid ticket ID:', id);
-    addActivity('❌ Cannot resolve: Invalid ticket ID', 'error');
-    alert('Cannot resolve ticket: Invalid ticket ID');
+    addActivity('❌ Cannot resolve: Ticket ID is missing', 'error');
     return;
   }
   
   try {
     const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please login again');
-      window.location.href = '/auth';
-      return;
-    }
     
-    console.log('Updating ticket:', id, 'to status:', newStatus);
-    
+    // 2. Network Call
     const response = await axios.patch(`${API_BASE_URL}/tickets/${id}/status`, { 
       status: newStatus, 
       agentEmail: agent.email,
@@ -443,89 +438,41 @@ const updateStatus = async (id, newStatus) => {
       headers: { Authorization: `Bearer ${token}` }
     });
     
-    console.log('Update response:', response.data);
-    
-    // Update local state
+    // 3. Update local tickets list
     setTickets(prev => prev.map(t => {
       const ticketId = t._id || t.id;
-      return ticketId === id ? { 
-        ...t, 
-        status: newStatus, 
-        resolved_at: newStatus === 'resolved' ? new Date().toISOString() : t.resolved_at 
-      } : t;
+      return ticketId === id ? { ...t, status: newStatus } : t;
     }));
     
-    // Update selected ticket if it's the same
-    if (selectedTicket && (selectedTicket._id === id || selectedTicket.id === id)) {
-      setSelectedTicket({ 
-        ...selectedTicket, 
-        status: newStatus, 
-        resolved_at: newStatus === 'resolved' ? new Date().toISOString() : selectedTicket.resolved_at 
-      });
-    }
+    // 4. Update the currently viewed ticket
+    setSelectedTicket(prev => prev && (prev._id === id || prev.id === id) 
+      ? { ...prev, status: newStatus } 
+      : prev
+    );
     
-    const displayId = id.toString().slice(-6).toUpperCase();
-    addActivity(`✅ Ticket #${displayId} marked as ${newStatus}`, "success");
-    
-    // Refresh data after a short delay
-    setTimeout(() => fetchAllData(true), 1000);
-    
+    addActivity(`✅ Ticket Status: ${newStatus}`, "success");
   } catch (err) { 
-    console.error("Update failed:", err.response?.data || err.message);
-    const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
-    addActivity(`❌ Failed to update ticket: ${errorMsg}`, "error");
-    alert(`Failed to update ticket: ${errorMsg}`);
+    console.error("Update failed:", err);
+    addActivity(`❌ Update failed: ${err.response?.data?.message || err.message}`, "error");
   }
 };
 
 const assignToAgent = async (ticketId, agentName) => {
-  if (!ticketId || ticketId === 'undefined' || ticketId === 'N/A') {
-    console.error('Invalid ticket ID for assignment:', ticketId);
-    addActivity('❌ Cannot assign: Invalid ticket ID', 'error');
-    alert('Cannot assign ticket: Invalid ticket ID');
-    return;
-  }
+  if (!ticketId || ticketId === 'undefined') return;
   
   try {
     const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Please login again');
-      window.location.href = '/auth';
-      return;
-    }
-    
-    console.log('Assigning ticket:', ticketId, 'to agent:', agentName);
-    
-    const response = await axios.patch(`${API_BASE_URL}/tickets/${ticketId}/assign`, { 
+    await axios.patch(`${API_BASE_URL}/tickets/${ticketId}/assign`, { 
       agent: agentName 
     }, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
-    console.log('Assignment response:', response.data);
-    
-    // Update local state
-    setTickets(prev => prev.map(t => {
-      const currentId = t._id || t.id;
-      return currentId === ticketId ? { ...t, assignedTo: agentName } : t;
-    }));
-    
-    // Update selected ticket if it's the same
-    if (selectedTicket && (selectedTicket._id === ticketId || selectedTicket.id === ticketId)) {
-      setSelectedTicket({ ...selectedTicket, assignedTo: agentName });
-    }
-    
-    const displayId = ticketId.toString().slice(-6).toUpperCase();
-    addActivity(`👤 Assigned #${displayId} to ${agentName}`, "info");
-    
-    // Refresh data after a short delay
-    setTimeout(() => fetchAllData(true), 1000);
-    
+    setTickets(prev => prev.map(t => (t._id === ticketId ? { ...t, assignedTo: agentName } : t)));
+    setSelectedTicket(prev => prev && prev._id === ticketId ? { ...prev, assignedTo: agentName } : prev);
+    addActivity(`👤 Assigned to ${agentName}`, "info");
   } catch (err) {
-    console.error("Assignment failed:", err.response?.data || err.message);
-    const errorMsg = err.response?.data?.error || err.message || 'Unknown error';
-    addActivity(`❌ Failed to assign ticket: ${errorMsg}`, "error");
-    alert(`Failed to assign ticket: ${errorMsg}`);
+    addActivity("❌ Assignment failed", "error");
   }
 };
 
@@ -988,22 +935,13 @@ const assignToAgent = async (ticketId, agentName) => {
       </select>
     )}
     <button 
-      onClick={() => {
-        // Get the ticket ID safely
-        const ticketId = selectedTicket._id || selectedTicket.id;
-        console.log('Resolving ticket with ID:', ticketId);
-        
-        if (ticketId && ticketId !== 'N/A' && ticketId !== 'undefined') {
-          updateStatus(ticketId, 'resolved');
-        } else {
-          console.error('Invalid ticket ID:', ticketId);
-          alert('Cannot resolve: No valid ticket ID found. Please select a ticket first.');
-        }
-      }} 
-      className="resolve-btn"
-    >
-      <CheckCircle2 size={18}/> MARK_AS_SOLVED
-    </button>
+  disabled={!selectedTicket?._id} // Disable if no ID
+  onClick={() => updateStatus(selectedTicket._id || selectedTicket.id, 'resolved')} 
+  className="resolve-btn"
+  style={{ opacity: !selectedTicket?._id ? 0.5 : 1 }}
+>
+  <CheckCircle2 size={18}/> MARK_AS_SOLVED
+</button>
   </div>
 ) : (
   <div style={styles.solvedLabel}>
