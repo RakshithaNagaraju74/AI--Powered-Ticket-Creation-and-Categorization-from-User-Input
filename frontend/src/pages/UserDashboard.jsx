@@ -1029,7 +1029,7 @@ const CategoryDistribution = ({ theme, tickets }) => {
 const EnhancedTicketCard = ({ ticket, theme, onViewDetails, onGiveFeedback }) => {
   const ticketId = ticket._id || ticket.id || 'N/A';
   const displayTicketId = ticketId.length > 8 ? `#${ticketId.slice(-8).toUpperCase()}` : `#${ticketId}`;
-
+  const statusStyles = getStatusStyles(ticket.status);
   return (
     <div style={{
       background: 'white',
