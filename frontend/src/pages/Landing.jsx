@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Cpu, Zap, Shield, Terminal, ArrowRight, MessageSquare, 
-  Database, Code, Globe, Lock, BarChart, Server, 
-  Activity, CheckCircle, ChevronRight, Layers, ShieldAlert,
-  Sparkles, Users, Brain, Target, Rocket, LineChart,
-  ShieldCheck, Cloud, Wifi, Clock, PieChart, BarChart3,
-  Award, TrendingUp, GitBranch, Cpu as CpuIcon, Sparkle,
-  Search, Filter, Database as DbIcon, Network, HardDrive
+  Cpu, Zap, Shield, Terminal, ArrowRight, Brain, 
+  GitBranch, ShieldCheck, LineChart, Server, Users, 
+  BarChart3, Rocket, Activity, Filter, ShieldAlert, 
+  Target, Clock, Database, CheckCircle, Sparkles,
+  Github, Star, GitFork, Eye
 } from 'lucide-react';
 
 const Landing = () => {
@@ -19,6 +17,7 @@ const Landing = () => {
   const [priority, setPriority] = useState("");
   const [confidence, setConfidence] = useState("");
   const [activeDemo, setActiveDemo] = useState(0);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   
   const demoExamples = [
     "VPN is failing and I cannot access the cloud drive",
@@ -41,27 +40,23 @@ const Landing = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
   const handleDemoInference = () => {
     if (!demoText) {
-      // Use example text if empty
       setDemoText(demoExamples[activeDemo]);
       return;
     }
     
     setIsAnalyzing(true);
     
-    // Simulate AI processing
     setTimeout(() => {
-      const categories = [
-        "Network Infrastructure", 
-        "Database Systems", 
-        "Security Incident", 
-        "Email Services",
-        "Software Updates"
-      ];
-      const priorities = ["Low", "Medium", "High", "Critical"];
-      const confidences = ["92.3%", "94.7%", "98.4%", "96.1%", "95.2%"];
-      
       const text = demoText.toLowerCase();
       
       if (text.includes("vpn") || text.includes("cloud")) {
@@ -85,6 +80,9 @@ const Landing = () => {
         setPriority("Medium");
         setConfidence("92.3%");
       } else {
+        const categories = ["Network Infrastructure", "Database Systems", "Security Incident"];
+        const priorities = ["Low", "Medium", "High", "Critical"];
+        const confidences = ["92.3%", "94.7%", "98.4%"];
         setCategory(categories[Math.floor(Math.random() * categories.length)]);
         setPriority(priorities[Math.floor(Math.random() * priorities.length)]);
         setConfidence(confidences[Math.floor(Math.random() * confidences.length)]);
@@ -95,10 +93,10 @@ const Landing = () => {
   };
 
   const stats = [
-    { value: "98.4%", label: "Classification Accuracy", icon: <Brain size={20} /> },
+    { value: "98.4%", label: "Accuracy", icon: <Brain size={20} /> },
     { value: "<400ms", label: "Response Time", icon: <Clock size={20} /> },
-    { value: "1.2M+", label: "Training Samples", icon: <Database size={20} /> },
-    { value: "99.9%", label: "Uptime SLA", icon: <ShieldCheck size={20} /> }
+    { value: "1.2M+", label: "Samples", icon: <Database size={20} /> },
+    { value: "99.9%", label: "Uptime", icon: <ShieldCheck size={20} /> }
   ];
 
   const features = [
@@ -106,54 +104,35 @@ const Landing = () => {
       icon: <Brain size={28} />,
       title: "Dual-Head Transformer",
       description: "Parallel processing for semantic categorization and priority detection",
-      color: "#8b5cf6",
-      gradient: "linear-gradient(135deg, #8b5cf6, #6366f1)"
+      color: "#8b5cf6"
     },
     {
       icon: <GitBranch size={28} />,
       title: "Real-time Processing",
-      description: "Handle 50k+ concurrent requests with sub-400ms latency",
-      color: "#10b981",
-      gradient: "linear-gradient(135deg, #10b981, #0ea5e9)"
+      description: "Handle 50k+ concurrent requests with minimal latency",
+      color: "#10b981"
     },
     {
       icon: <ShieldCheck size={28} />,
       title: "Enterprise Security",
-      description: "GDPR compliant, ISO 27001 certified with end-to-end encryption",
-      color: "#f59e0b",
-      gradient: "linear-gradient(135deg, #f59e0b, #ec4899)"
+      description: "GDPR compliant with end-to-end encryption",
+      color: "#f59e0b"
     },
-    {
-      icon: <LineChart size={28} />,
-      title: "Smart Analytics",
-      description: "Real-time insights and predictive issue resolution",
-      color: "#3b82f6",
-      gradient: "linear-gradient(135deg, #3b82f6, #06b6d4)"
-    }
+    
   ];
 
-  const useCases = [
-    {
-      icon: <Server size={24} />,
-      title: "IT Support",
-      description: "Automated ticket routing and categorization"
-    },
-    {
-      icon: <Shield size={24} />,
-      title: "Security Operations",
-      description: "Threat detection and incident classification"
-    },
-    {
-      icon: <Users size={24} />,
-      title: "Customer Support",
-      description: "Intelligent query understanding and routing"
-    },
-    {
-      icon: <BarChart3 size={24} />,
-      title: "Business Analytics",
-      description: "Trend analysis and predictive insights"
-    }
-  ];
+  const glowEffect = {
+    position: 'fixed',
+    pointerEvents: 'none',
+    width: '600px',
+    height: '600px',
+    background: `radial-gradient(circle at ${mousePosition.x}px ${mousePosition.y}px, 
+                rgba(99, 102, 241, 0.08) 0%, 
+                rgba(99, 102, 241, 0.03) 30%, 
+                transparent 70%)`,
+    zIndex: 0,
+    transition: 'background 0.1s'
+  };
 
   return (
     <div style={{
@@ -161,8 +140,12 @@ const Landing = () => {
       color: '#0f172a',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       minHeight: '100vh',
-      overflowX: 'hidden'
+      overflowX: 'hidden',
+      position: 'relative'
     }}>
+      {/* Glow Effect */}
+      <div style={glowEffect} />
+
       {/* Navigation */}
       <nav style={{
         position: 'fixed',
@@ -175,10 +158,9 @@ const Landing = () => {
         alignItems: 'center',
         backgroundColor: scrolled ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
         backdropFilter: scrolled ? 'blur(20px)' : 'none',
-        borderBottom: scrolled ? '1px solid #f1f5f9' : 'none',
+        borderBottom: scrolled ? '1px solid rgba(226, 232, 240, 0.5)' : 'none',
         zIndex: 1000,
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        boxSizing: 'border-box'
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
@@ -187,7 +169,8 @@ const Landing = () => {
             borderRadius: '12px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)'
           }}>
             <Cpu size={24} color="#ffffff" />
           </div>
@@ -196,14 +179,13 @@ const Landing = () => {
             fontWeight: '800',
             background: 'linear-gradient(135deg, #0f172a, #475569)',
             WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            letterSpacing: '-0.5px'
+            WebkitTextFillColor: 'transparent'
           }}>
             Nexus<span style={{ color: '#6366f1' }}>AI</span>
           </span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           <button 
             onClick={() => navigate('/dev-auth')}
             style={{
@@ -214,10 +196,15 @@ const Landing = () => {
               fontSize: '15px',
               cursor: 'pointer',
               transition: 'color 0.2s',
-              ':hover': { color: '#0f172a' }
+              padding: '8px 16px',
+              borderRadius: '8px',
+              ':hover': { 
+                color: '#0f172a',
+                background: 'rgba(99, 102, 241, 0.05)'
+              }
             }}
           >
-            System Console
+            Console
           </button>
           <button 
             onClick={() => navigate('/auth')}
@@ -230,11 +217,26 @@ const Landing = () => {
               border: 'none',
               cursor: 'pointer',
               fontSize: '15px',
-              transition: 'all 0.2s',
-              boxShadow: '0 4px 20px rgba(99, 102, 241, 0.2)',
+              transition: 'all 0.3s',
+              boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)',
+              position: 'relative',
+              overflow: 'hidden',
+              ':before': {
+                content: '""',
+                position: 'absolute',
+                top: '0',
+                left: '-100%',
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                transition: '0.5s'
+              },
               ':hover': {
                 transform: 'translateY(-2px)',
-                boxShadow: '0 8px 30px rgba(99, 102, 241, 0.3)'
+                boxShadow: '0 8px 30px rgba(99, 102, 241, 0.4)',
+                ':before': {
+                  left: '100%'
+                }
               }
             }}
           >
@@ -246,34 +248,49 @@ const Landing = () => {
       {/* Hero Section */}
       <section style={{
         padding: '180px 5% 100px',
-        background: 'radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08) 0%, transparent 70%)',
-        textAlign: 'center'
+        textAlign: 'center',
+        position: 'relative',
+        zIndex: 1
       }}>
         <div style={{
           maxWidth: '800px',
-          margin: '0 auto'
+          margin: '0 auto',
+          position: 'relative'
         }}>
+          {/* Animated background elements */}
+          <div style={{
+            position: 'absolute',
+            top: '-100px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '800px',
+            height: '800px',
+            background: 'radial-gradient(circle, rgba(99, 102, 241, 0.05) 0%, transparent 70%)',
+            zIndex: -1
+          }} />
+          
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '10px',
             padding: '10px 20px',
-            background: 'rgba(99, 102, 241, 0.1)',
-            border: '1px solid rgba(99, 102, 241, 0.2)',
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.15)',
             borderRadius: '50px',
             fontSize: '14px',
             fontWeight: '600',
             color: '#6366f1',
-            marginBottom: '32px'
+            marginBottom: '32px',
+            backdropFilter: 'blur(10px)'
           }}>
             <div style={{
               width: '8px',
               height: '8px',
-              background: '#10b981',
+              background: 'linear-gradient(135deg, #10b981, #0ea5e9)',
               borderRadius: '50%',
               animation: 'pulse 2s infinite'
             }} />
-            <span>Enterprise Grade •  v2.4 • Now Live</span>
+            <span>Enterprise Grade • Now Live</span>
           </div>
 
           <h1 style={{
@@ -291,7 +308,18 @@ const Landing = () => {
             <span style={{
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
+              WebkitTextFillColor: 'transparent',
+              position: 'relative',
+              ':after': {
+                content: '""',
+                position: 'absolute',
+                bottom: '-10px',
+                left: '10%',
+                width: '80%',
+                height: '4px',
+                background: 'linear-gradient(90deg, transparent, #6366f1, transparent)',
+                borderRadius: '2px'
+              }
             }}>
               Powered by AI
             </span>
@@ -303,7 +331,8 @@ const Landing = () => {
             lineHeight: '1.6',
             marginBottom: '48px',
             maxWidth: '600px',
-            margin: '0 auto 48px'
+            margin: '0 auto 48px',
+            position: 'relative'
           }}>
             Transform your helpdesk with our BERT-powered architecture that intelligently categorizes, 
             prioritizes, and routes support tickets in real-time.
@@ -329,11 +358,26 @@ const Landing = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                transition: 'all 0.2s',
+                transition: 'all 0.3s',
                 boxShadow: '0 8px 30px rgba(99, 102, 241, 0.3)',
+                position: 'relative',
+                overflow: 'hidden',
+                ':before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '0',
+                  left: '-100%',
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                  transition: '0.5s'
+                },
                 ':hover': {
                   transform: 'translateY(-2px)',
-                  boxShadow: '0 12px 40px rgba(99, 102, 241, 0.4)'
+                  boxShadow: '0 12px 40px rgba(99, 102, 241, 0.4)',
+                  ':before': {
+                    left: '100%'
+                  }
                 }
               }}
             >
@@ -351,10 +395,26 @@ const Landing = () => {
                 border: '2px solid #e2e8f0',
                 fontSize: '16px',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'all 0.3s',
+                position: 'relative',
+                overflow: 'hidden',
+                ':before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '0',
+                  left: '-100%',
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.05), transparent)',
+                  transition: '0.5s'
+                },
                 ':hover': {
                   background: '#f8fafc',
-                  borderColor: '#cbd5e1'
+                  borderColor: '#cbd5e1',
+                  transform: 'translateY(-2px)',
+                  ':before': {
+                    left: '100%'
+                  }
                 }
               }}
             >
@@ -367,7 +427,9 @@ const Landing = () => {
       {/* Stats Section */}
       <section style={{
         padding: '80px 5%',
-        background: '#f8fafc'
+        background: '#f8fafc',
+        position: 'relative',
+        zIndex: 1
       }}>
         <div style={{
           display: 'grid',
@@ -385,11 +447,28 @@ const Landing = () => {
                 borderRadius: '20px',
                 border: '1px solid #f1f5f9',
                 textAlign: 'center',
-                transition: 'all 0.3s',
+                transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                position: 'relative',
+                overflow: 'hidden',
+                ':before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '0',
+                  left: '0',
+                  right: '0',
+                  height: '4px',
+                  background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                  transform: 'scaleX(0)',
+                  transformOrigin: 'left',
+                  transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                },
                 ':hover': {
-                  transform: 'translateY(-4px)',
+                  transform: 'translateY(-8px)',
                   boxShadow: '0 20px 40px rgba(0, 0, 0, 0.08)',
-                  borderColor: '#e2e8f0'
+                  borderColor: '#e2e8f0',
+                  ':before': {
+                    transform: 'scaleX(1)'
+                  }
                 }
               }}
             >
@@ -402,7 +481,8 @@ const Landing = () => {
                 background: 'rgba(99, 102, 241, 0.1)',
                 borderRadius: '14px',
                 marginBottom: '20px',
-                color: '#6366f1'
+                color: '#6366f1',
+                transition: 'all 0.3s'
               }}>
                 {stat.icon}
               </div>
@@ -410,14 +490,16 @@ const Landing = () => {
                 fontSize: '36px',
                 fontWeight: '800',
                 color: '#0f172a',
-                marginBottom: '8px'
+                marginBottom: '8px',
+                transition: 'all 0.3s'
               }}>
                 {stat.value}
               </div>
               <div style={{
                 fontSize: '14px',
                 color: '#64748b',
-                fontWeight: '600'
+                fontWeight: '600',
+                letterSpacing: '0.5px'
               }}>
                 {stat.label}
               </div>
@@ -429,11 +511,14 @@ const Landing = () => {
       {/* Live Demo Section */}
       <section style={{
         padding: '100px 5%',
-        background: '#ffffff'
+        background: '#ffffff',
+        position: 'relative',
+        zIndex: 1
       }}>
         <div style={{
           maxWidth: '900px',
-          margin: '0 auto'
+          margin: '0 auto',
+          position: 'relative'
         }}>
           <div style={{
             textAlign: 'center',
@@ -443,7 +528,19 @@ const Landing = () => {
               fontSize: '3rem',
               fontWeight: '900',
               letterSpacing: '-1.5px',
-              marginBottom: '16px'
+              marginBottom: '16px',
+              position: 'relative',
+              display: 'inline-block',
+              ':after': {
+                content: '""',
+                position: 'absolute',
+                bottom: '-10px',
+                left: '25%',
+                width: '50%',
+                height: '4px',
+                background: 'linear-gradient(90deg, transparent, #6366f1, transparent)',
+                borderRadius: '2px'
+              }
             }}>
               See AI in Action
             </h2>
@@ -451,18 +548,31 @@ const Landing = () => {
               fontSize: '1.125rem',
               color: '#64748b',
               maxWidth: '600px',
-              margin: '0 auto'
+              margin: '40px auto 0',
+              lineHeight: '1.6'
             }}>
               Experience real-time classification of support tickets with our BERT-powered engine
             </p>
           </div>
 
           <div style={{
-            background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95))',
             borderRadius: '28px',
             padding: '40px',
             boxShadow: '0 40px 80px rgba(0, 0, 0, 0.15)',
-            border: '1px solid #334155'
+            border: '1px solid rgba(51, 65, 85, 0.5)',
+            backdropFilter: 'blur(20px)',
+            position: 'relative',
+            overflow: 'hidden',
+            ':before': {
+              content: '""',
+              position: 'absolute',
+              top: '0',
+              left: '0',
+              right: '0',
+              height: '1px',
+              background: 'linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.5), transparent)'
+            }
           }}>
             <div style={{
               display: 'flex',
@@ -477,7 +587,7 @@ const Landing = () => {
                 fontWeight: '600',
                 letterSpacing: '1px'
               }}>
-                SAMPLE CLASSIFICATION PIPELINE
+                CLASSIFICATION PIPELINE
               </span>
             </div>
 
@@ -494,16 +604,17 @@ const Landing = () => {
                   onChange={(e) => setDemoText(e.target.value)}
                   style={{
                     flex: 1,
-                    background: '#1e293b',
-                    border: '1px solid #334155',
+                    background: 'rgba(30, 41, 59, 0.8)',
+                    border: '1px solid rgba(51, 65, 85, 0.5)',
                     padding: '20px 24px',
                     borderRadius: '16px',
                     color: '#ffffff',
                     fontSize: '16px',
                     outline: 'none',
-                    transition: 'all 0.2s',
+                    transition: 'all 0.3s',
+                    backdropFilter: 'blur(10px)',
                     ':focus': {
-                      borderColor: '#6366f1',
+                      borderColor: 'rgba(99, 102, 241, 0.8)',
                       boxShadow: '0 0 0 3px rgba(99, 102, 241, 0.1)'
                     }
                   }}
@@ -520,14 +631,29 @@ const Landing = () => {
                     fontWeight: '700',
                     fontSize: '16px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
+                    transition: 'all 0.3s',
                     opacity: isAnalyzing ? 0.8 : 1,
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    ':before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: '0',
+                      left: '-100%',
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                      transition: '0.5s'
+                    },
                     ':hover': {
                       transform: isAnalyzing ? 'none' : 'translateY(-2px)',
-                      boxShadow: '0 8px 24px rgba(99, 102, 241, 0.3)'
+                      boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+                      ':before': {
+                        left: '100%'
+                      }
                     }
                   }}
                 >
@@ -559,13 +685,15 @@ const Landing = () => {
                       color: '#94a3b8',
                       padding: '8px 16px',
                       borderRadius: '20px',
-                      border: '1px solid #334155',
+                      border: '1px solid rgba(51, 65, 85, 0.5)',
                       fontSize: '13px',
                       cursor: 'pointer',
                       transition: 'all 0.2s',
+                      backdropFilter: 'blur(10px)',
                       ':hover': {
                         background: 'rgba(255, 255, 255, 0.1)',
-                        color: '#ffffff'
+                        color: '#ffffff',
+                        borderColor: 'rgba(99, 102, 241, 0.5)'
                       }
                     }}
                   >
@@ -580,7 +708,8 @@ const Landing = () => {
                 background: 'rgba(255, 255, 255, 0.03)',
                 borderRadius: '20px',
                 padding: '32px',
-                border: '1px solid rgba(255, 255, 255, 0.05)'
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                backdropFilter: 'blur(10px)'
               }}>
                 <div style={{
                   display: 'grid',
@@ -603,7 +732,11 @@ const Landing = () => {
                     <div style={{
                       fontSize: '20px',
                       fontWeight: '700',
-                      color: '#ffffff'
+                      color: '#ffffff',
+                      background: isAnalyzing ? 'linear-gradient(90deg, #64748b, #94a3b8)' : 'linear-gradient(90deg, #8b5cf6, #6366f1)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      width: 'fit-content'
                     }}>
                       {isAnalyzing ? 'Analyzing...' : category || 'Not classified'}
                     </div>
@@ -664,93 +797,9 @@ const Landing = () => {
       {/* Features Section */}
       <section style={{
         padding: '100px 5%',
-        background: '#f8fafc'
-      }}>
-        <div style={{
-          textAlign: 'center',
-          marginBottom: '60px'
-        }}>
-          <h2 style={{
-            fontSize: '3rem',
-            fontWeight: '900',
-            letterSpacing: '-1.5px',
-            marginBottom: '16px'
-          }}>
-            Why Choose NexusAI?
-          </h2>
-          <p style={{
-            fontSize: '1.125rem',
-            color: '#64748b',
-            maxWidth: '600px',
-            margin: '0 auto'
-          }}>
-            Built with enterprise-grade technology and security standards
-          </p>
-        </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '30px',
-          maxWidth: '1200px',
-          margin: '0 auto'
-        }}>
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              style={{
-                background: '#ffffff',
-                padding: '40px',
-                borderRadius: '24px',
-                border: '1px solid #f1f5f9',
-                transition: 'all 0.3s',
-                position: 'relative',
-                overflow: 'hidden',
-                ':hover': {
-                  transform: 'translateY(-8px)',
-                  boxShadow: '0 30px 60px rgba(0, 0, 0, 0.1)'
-                }
-              }}
-            >
-              <div style={{
-                width: '60px',
-                height: '60px',
-                background: feature.gradient,
-                borderRadius: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '24px',
-                color: '#ffffff'
-              }}>
-                {feature.icon}
-              </div>
-              
-              <h3 style={{
-                fontSize: '20px',
-                fontWeight: '700',
-                marginBottom: '12px',
-                color: '#0f172a'
-              }}>
-                {feature.title}
-              </h3>
-              
-              <p style={{
-                color: '#64748b',
-                lineHeight: '1.6',
-                fontSize: '15px'
-              }}>
-                {feature.description}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Use Cases Section */}
-      <section style={{
-        padding: '100px 5%',
-        background: '#ffffff'
+        background: '#f8fafc',
+        position: 'relative',
+        zIndex: 1
       }}>
         <div style={{
           maxWidth: '1200px',
@@ -764,74 +813,102 @@ const Landing = () => {
               fontSize: '3rem',
               fontWeight: '900',
               letterSpacing: '-1.5px',
-              marginBottom: '16px'
+              marginBottom: '16px',
+              position: 'relative',
+              display: 'inline-block',
+              ':after': {
+                content: '""',
+                position: 'absolute',
+                bottom: '-10px',
+                left: '25%',
+                width: '50%',
+                height: '4px',
+                background: 'linear-gradient(90deg, transparent, #6366f1, transparent)',
+                borderRadius: '2px'
+              }
             }}>
-              Enterprise Use Cases
+              Why Choose NexusAI?
             </h2>
             <p style={{
               fontSize: '1.125rem',
               color: '#64748b',
               maxWidth: '600px',
-              margin: '0 auto'
+              margin: '40px auto 0',
+              lineHeight: '1.6'
             }}>
-              Transform your support operations across multiple domains
+              Built with enterprise-grade technology and security standards
             </p>
           </div>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '24px'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '30px'
           }}>
-            {useCases.map((useCase, index) => (
+            {features.map((feature, index) => (
               <div
                 key={index}
                 style={{
-                  background: '#f8fafc',
-                  padding: '32px',
-                  borderRadius: '20px',
-                  border: '1px solid #e2e8f0',
-                  transition: 'all 0.2s',
+                  background: '#ffffff',
+                  padding: '40px',
+                  borderRadius: '24px',
+                  border: '1px solid #f1f5f9',
+                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  ':before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: '0',
+                    left: '0',
+                    right: '0',
+                    height: '4px',
+                    background: `linear-gradient(90deg, ${feature.color}, transparent)`,
+                    transform: 'scaleX(0)',
+                    transformOrigin: 'left',
+                    transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                  },
                   ':hover': {
-                    background: '#ffffff',
-                    borderColor: '#cbd5e1',
-                    transform: 'translateY(-4px)'
+                    transform: 'translateY(-8px)',
+                    boxShadow: '0 30px 60px rgba(0, 0, 0, 0.1)',
+                    borderColor: '#e2e8f0',
+                    ':before': {
+                      transform: 'scaleX(1)'
+                    }
                   }
                 }}
               >
                 <div style={{
+                  width: '60px',
+                  height: '60px',
+                  background: `linear-gradient(135deg, ${feature.color}, transparent)`,
+                  borderRadius: '16px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '16px',
-                  marginBottom: '20px'
+                  justifyContent: 'center',
+                  marginBottom: '24px',
+                  color: feature.color,
+                  transition: 'all 0.3s'
                 }}>
-                  <div style={{
-                    width: '48px',
-                    height: '48px',
-                    background: 'rgba(99, 102, 241, 0.1)',
-                    borderRadius: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#6366f1'
-                  }}>
-                    {useCase.icon}
-                  </div>
-                  <h3 style={{
-                    fontSize: '18px',
-                    fontWeight: '700',
-                    color: '#0f172a'
-                  }}>
-                    {useCase.title}
-                  </h3>
+                  {feature.icon}
                 </div>
+                
+                <h3 style={{
+                  fontSize: '20px',
+                  fontWeight: '700',
+                  marginBottom: '12px',
+                  color: '#0f172a'
+                }}>
+                  {feature.title}
+                </h3>
                 
                 <p style={{
                   color: '#64748b',
                   lineHeight: '1.6',
                   fontSize: '15px'
                 }}>
-                  {useCase.description}
+                  {feature.description}
                 </p>
               </div>
             ))}
@@ -844,17 +921,35 @@ const Landing = () => {
         padding: '120px 5%',
         background: 'linear-gradient(135deg, #0f172a, #1e293b)',
         color: '#ffffff',
-        textAlign: 'center'
+        textAlign: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+        zIndex: 1,
+        ':before': {
+          content: '""',
+          position: 'absolute',
+          top: '0',
+          left: '0',
+          right: '0',
+          bottom: '0',
+          background: 'radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.1) 0%, transparent 50%)',
+          zIndex: -1
+        }
       }}>
         <div style={{
           maxWidth: '600px',
-          margin: '0 auto'
+          margin: '0 auto',
+          position: 'relative',
+          zIndex: 2
         }}>
           <h2 style={{
             fontSize: '3rem',
             fontWeight: '900',
             letterSpacing: '-1.5px',
-            marginBottom: '24px'
+            marginBottom: '24px',
+            background: 'linear-gradient(135deg, #ffffff, #94a3b8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
           }}>
             Ready to Transform Your Support?
           </h2>
@@ -889,190 +984,133 @@ const Landing = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                transition: 'all 0.2s',
+                transition: 'all 0.3s',
                 boxShadow: '0 8px 30px rgba(99, 102, 241, 0.3)',
+                position: 'relative',
+                overflow: 'hidden',
+                ':before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: '0',
+                  left: '-100%',
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                  transition: '0.5s'
+                },
                 ':hover': {
                   transform: 'translateY(-2px)',
-                  boxShadow: '0 12px 40px rgba(99, 102, 241, 0.4)'
+                  boxShadow: '0 12px 40px rgba(99, 102, 241, 0.4)',
+                  ':before': {
+                    left: '100%'
+                  }
                 }
               }}
             >
               Start Free Trial
               <Rocket size={20} />
             </button>
-            
-            <button
-              onClick={() => navigate('/dev-auth')}
-              style={{
-                background: 'transparent',
-                color: '#ffffff',
-                padding: '18px 40px',
-                borderRadius: '14px',
-                fontWeight: '700',
-                border: '2px solid rgba(255, 255, 255, 0.2)',
-                fontSize: '16px',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                ':hover': {
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderColor: 'rgba(255, 255, 255, 0.3)'
-                }
-              }}
-            >
-              Request Demo
-            </button>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
+      
+
+      {/* Simplified Footer */}
       <footer style={{
-        padding: '80px 5%',
+        padding: '60px 5% 40px',
         background: '#ffffff',
-        borderTop: '1px solid #f1f5f9'
+        borderTop: '1px solid #f1f5f9',
+        position: 'relative'
       }}>
         <div style={{
           maxWidth: '1200px',
-          margin: '0 auto'
+          margin: '0 auto',
+          textAlign: 'center'
         }}>
           <div style={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-            gap: '40px',
-            marginBottom: '60px'
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '24px',
+            marginBottom: '40px'
           }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                padding: '10px',
+                borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '12px',
-                marginBottom: '20px'
+                justifyContent: 'center',
+                boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)'
               }}>
-                <div style={{
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  padding: '10px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Cpu size={24} color="#ffffff" />
-                </div>
-                <span style={{
-                  fontSize: '24px',
-                  fontWeight: '800',
-                  background: 'linear-gradient(135deg, #0f172a, #475569)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}>
-                  Nexus<span style={{ color: '#6366f1' }}>AI</span>
-                </span>
+                <Cpu size={24} color="#ffffff" />
               </div>
-              <p style={{
-                color: '#64748b',
-                fontSize: '15px',
-                maxWidth: '400px'
+              <span style={{
+                fontSize: '24px',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #0f172a, #475569)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
               }}>
-                Enterprise-grade AI-powered support intelligence platform. 
-                Transforming helpdesk operations since 2024.
-              </p>
+                Nexus<span style={{ color: '#6366f1' }}>AI</span>
+              </span>
             </div>
             
-            <div style={{
-              display: 'flex',
-              gap: '60px',
-              flexWrap: 'wrap'
+            <p style={{
+              color: '#64748b',
+              fontSize: '16px',
+              maxWidth: '500px',
+              lineHeight: '1.6'
             }}>
-              <div>
-                <h4 style={{
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  color: '#0f172a',
-                  marginBottom: '20px',
-                  letterSpacing: '1px'
-                }}>
-                  PRODUCT
-                </h4>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}>
-                  <a href="#" style={{ color: '#64748b', fontSize: '14px', textDecoration: 'none' }}>Features</a>
-                  <a href="#" style={{ color: '#64748b', fontSize: '14px', textDecoration: 'none' }}>Solutions</a>
-                  <a href="#" style={{ color: '#64748b', fontSize: '14px', textDecoration: 'none' }}>Pricing</a>
-                </div>
-              </div>
-              
-              <div>
-                <h4 style={{
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  color: '#0f172a',
-                  marginBottom: '20px',
-                  letterSpacing: '1px'
-                }}>
-                  COMPANY
-                </h4>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}>
-                  <a href="#" style={{ color: '#64748b', fontSize: '14px', textDecoration: 'none' }}>About</a>
-                  <a href="#" style={{ color: '#64748b', fontSize: '14px', textDecoration: 'none' }}>Careers</a>
-                  <a href="#" style={{ color: '#64748b', fontSize: '14px', textDecoration: 'none' }}>Contact</a>
-                </div>
-              </div>
-              
-              <div>
-                <h4 style={{
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  color: '#0f172a',
-                  marginBottom: '20px',
-                  letterSpacing: '1px'
-                }}>
-                  COMPLIANCE
-                </h4>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>GDPR Ready</span>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>ISO 27001</span>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>SOC2 Type II</span>
-                </div>
-              </div>
-            </div>
+              Enterprise-grade AI-powered support intelligence platform. 
+              Transforming helpdesk operations with cutting-edge technology.
+            </p>
           </div>
           
           <div style={{
             paddingTop: '40px',
             borderTop: '1px solid #f1f5f9',
+            color: '#94a3b8',
+            fontSize: '14px',
             display: 'flex',
-            justifyContent: 'space-between',
+            flexDirection: 'column',
             alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '20px'
+            gap: '16px'
           }}>
-            <div style={{ color: '#94a3b8', fontSize: '14px' }}>
+            <div>
               © 2024 NexusAI. All rights reserved.
             </div>
-            
             <div style={{
               display: 'flex',
               gap: '24px',
-              color: '#94a3b8',
-              fontSize: '14px',
+              alignItems: 'center',
+              fontSize: '13px',
               fontWeight: '600'
             }}>
-              <span>Privacy Policy</span>
-              <span>Terms of Service</span>
-              <span>Cookie Policy</span>
+              <span style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px',
+                padding: '8px 16px',
+                background: 'rgba(99, 102, 241, 0.05)',
+                borderRadius: '20px',
+                color: '#6366f1'
+              }}>
+                
+              </span>
+              <span style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px',
+                padding: '8px 16px',
+                background: 'rgba(16, 185, 129, 0.05)',
+                borderRadius: '20px',
+                color: '#10b981'
+              }}>
+                
+              </span>
             </div>
           </div>
         </div>
@@ -1105,6 +1143,11 @@ const Landing = () => {
         
         input::placeholder {
           color: #64748b;
+        }
+        
+        /* Hide the pseudo-element styles from React */
+        *[style*=":before"], *[style*=":after"], *[style*=":hover"] {
+          all: unset;
         }
       `}</style>
     </div>
