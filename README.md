@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img width="500" height="500" alt="logo-preview1" src="https://github.com/user-attachments/assets/721cfcbe-fb28-43c8-8472-822225496c45" />
+  <img width="180" height="180" alt="apple-touch-icon" src="https://github.com/user-attachments/assets/d972225f-bdad-422b-90a2-f3f5ae79f127" />
 </p>
 # Nexus AI – Intelligent Support Suite 
 
