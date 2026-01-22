@@ -837,17 +837,77 @@ const QuickActions = ({ theme, onNewTicket, onViewHistory, onAIAssistant }) => {
 };
 
 // Recent Activity Component
+// Recent Activity Component (FIXED VERSION)
 const RecentActivity = ({ theme, tickets }) => {
   const recentTickets = tickets.slice(0, 3);
-  // ========== AI RESPONSE MODAL COMPONENT ==========
-
-// ==============================================
-
-// Helper function for activity icons
+  
+  // Helper function for activity icons
   const getActivityIcon = (ticket) => {
     if (ticket.status === 'resolved') return <CheckCircle size={16} color="#10b981" />;
     if (ticket.status === 'in_progress') return <RefreshCw size={16} color="#f59e0b" />;
     return <Clock size={16} color="#64748b" />;
+  };
+
+  // SAFE DATE FORMATTING FUNCTION
+  const formatTicketDate = (ticket) => {
+    try {
+      // Try to get date from various possible properties
+      const dateStr = ticket.created_at || ticket.createdAt || ticket.date || Date.now();
+      const date = new Date(dateStr);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return {
+          date: "Just now",
+          time: ""
+        };
+      }
+      
+      return {
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        time: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+    } catch (error) {
+      return {
+        date: "Just now",
+        time: ""
+      };
+    }
+  };
+
+  // SAFE STATUS FUNCTION
+  const getTicketStatus = (ticket) => {
+    if (!ticket) return "UNKNOWN";
+    
+    if (ticket.status === 'resolved' || ticket.status === 'closed') {
+      return "RESOLVED";
+    }
+    
+    try {
+      const createdDate = new Date(ticket.created_at || ticket.createdAt || Date.now());
+      const now = new Date();
+      
+      if (isNaN(createdDate.getTime())) {
+        return "NEW";
+      }
+      
+      const diffInHours = (now - createdDate) / (1000 * 60 * 60);
+      
+      if (diffInHours < 3) return "NEW";
+      if (diffInHours >= 3 && diffInHours < 6) return "PENDING";
+      return "OVERDUE";
+    } catch (error) {
+      return "NEW";
+    }
+  };
+
+  // SAFE TITLE AND CATEGORY
+  const getTicketTitle = (ticket) => {
+    return ticket.title || ticket.description?.substring(0, 30) + "..." || "Untitled Ticket";
+  };
+  
+  const getTicketCategory = (ticket) => {
+    return ticket.category || "General";
   };
 
   return (
@@ -870,48 +930,58 @@ const RecentActivity = ({ theme, tickets }) => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {recentTickets.map((ticket, index) => (
-            <div
-              key={ticket._id || ticket.id || `ticket-${index}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '16px',
-                background: '#f8fafc',
-                borderRadius: '12px',
-                border: `1px solid ${theme.border}`,
-                transition: 'all 0.2s',
-                ':hover': {
-                  background: '#f1f5f9',
-                  transform: 'translateX(4px)'
-                }
-              }}
-            >
-              <div style={{
-                background: `${getStatusStyles(ticket).background}`,
-                padding: '8px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                {getActivityIcon(ticket)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: theme.text, marginBottom: '4px' }}>
-                  {ticket.title}
+          {recentTickets.map((ticket, index) => {
+            // Use safe functions
+            const formattedDate = formatTicketDate(ticket);
+            const status = getTicketStatus(ticket);
+            const title = getTicketTitle(ticket);
+            const category = getTicketCategory(ticket);
+            
+            return (
+              <div
+                key={ticket._id || ticket.id || `ticket-${index}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '16px',
+                  background: '#f8fafc',
+                  borderRadius: '12px',
+                  border: `1px solid ${theme.border}`,
+                  transition: 'all 0.2s',
+                  ':hover': {
+                    background: '#f1f5f9',
+                    transform: 'translateX(4px)'
+                  }
+                }}
+              >
+                <div style={{
+                  background: getStatusStyles(ticket).background,
+                  padding: '8px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {getActivityIcon(ticket)}
                 </div>
-                <div style={{ fontSize: '12px', color: theme.muted }}>
-                  {ticket.category} • {getStatusStyles(ticket).label}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: theme.text, marginBottom: '4px' }}>
+                    {title}
+                  </div>
+                  <div style={{ fontSize: '12px', color: theme.muted }}>
+                    {category} • {status}
+                  </div>
+                </div>
+                <div style={{ fontSize: '11px', color: theme.muted, textAlign: 'right' }}>
+                  <div>{formattedDate.date}</div>
+                  {formattedDate.time && (
+                    <div style={{ opacity: 0.7 }}>{formattedDate.time}</div>
+                  )}
                 </div>
               </div>
-              <div style={{ fontSize: '11px', color: theme.muted, textAlign: 'right' }}>
-                <div>{new Date(ticket.created_at || ticket.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                <div style={{ opacity: 0.7 }}>{new Date(ticket.created_at || ticket.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -2798,10 +2868,31 @@ useEffect(() => {
 
     // Normal ticket creation
     addLog("SUCCESS: Prediction Synchronized.");
-    setLastResult(res.data);
-    setTickets(prev => [res.data, ...prev]);
+    
+    // ENSURE PROPER DATE FORMATTING FOR NEW TICKET
+    const newTicket = {
+      ...res.data.ticket,
+      // Ensure created_at is properly formatted
+      created_at: res.data.ticket.created_at || new Date().toISOString(),
+      createdAt: res.data.ticket.createdAt || new Date().toISOString(),
+      // Ensure other required properties
+      category: res.data.ticket.category || "General",
+      priority: res.data.ticket.priority || "medium",
+      status: res.data.ticket.status || "open"
+    };
+    
+    setLastResult(newTicket);
+    
+    // Add new ticket to beginning of tickets array with proper formatting
+    setTickets(prev => [newTicket, ...prev]);
+    
     setIssue({ title: '', description: '' });
     setIsProcessing(false);
+    
+    // Refresh tickets to ensure data consistency
+    setTimeout(() => {
+      fetchTickets();
+    }, 1000);
     
     alert('Ticket created successfully with AI classification!');
   } catch (err) {
