@@ -3,6 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const axios = require('axios');
+const Groq = require('groq-sdk');
+
+
 const { Sequelize, Op, where, fn, col, literal } = require('sequelize');
 require('dotenv').config();
 
@@ -16,12 +19,17 @@ const allowedOrigins = [
   /\.vercel\.app$/,   // Allows any Vercel deployment
 ];
 
+// Update your corsOptions in server.js
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, postman)
+    // Allow all origins in development
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // Production: Use your existing allowed origins
     if (!origin) return callback(null, true);
     
-    // Check if origin matches allowed origins
     for (let allowedOrigin of allowedOrigins) {
       if (typeof allowedOrigin === 'string') {
         if (allowedOrigin === origin) {
@@ -39,9 +47,9 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
-  maxAge: 86400, // 24 hours
+  maxAge: 86400,
 };
 
 app.use(cors(corsOptions));
@@ -106,6 +114,12 @@ const User = require('./models/User');
 const Ticket = require('./models/Ticket');
 const Notification = require('./models/Notification');
 const Analytics = require('./models/Analytics');
+const ArchivedTicket = require('./models/ArchivedTicket');
+const { classifyIssueType, generateAIResponse } = require('./utils/aiAssistant');
+// Initialize Groq client
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -115,9 +129,22 @@ app.use('/api/auth', authRoutes);
 const sequelize = require('./config/sequelize');
 
 // Sync database
-sequelize.sync({ alter: true })
-  .then(() => console.log('Database synced successfully'))
-  .catch(err => console.error('Database sync error:', err));
+sequelize.sync({ alter: true, force: false })
+  .then(() => {
+    console.log('Database synced successfully');
+    console.log('Active tickets table: tickets');
+    console.log('Archive table: archived_tickets');
+    
+    // Test the connection to ArchivedTicket table
+    return ArchivedTicket.findOne();
+  })
+  .then(testResult => {
+    console.log('ArchivedTicket table test successful');
+  })
+  .catch(err => {
+    console.error('Database sync error:', err);
+    console.error('Error details:', err.message);
+  });
 
 // --- LEADERBOARD API ---
 app.get('/api/agents/leaderboard', async (req, res) => {
@@ -159,6 +186,12 @@ app.get('/api/cors-test', (req, res) => {
   });
 });
 // --- TICKET GENERATION API ---
+// Add at top of your server file
+
+
+// Update the ticket generation endpoint
+// --- TICKET GENERATION API ---
+// --- TICKET GENERATION API (FIXED VERSION) ---
 app.post('/api/tickets/generate', async (req, res) => {
   try {
     console.log("Received ticket generation request:", req.body);
@@ -168,6 +201,16 @@ app.post('/api/tickets/generate', async (req, res) => {
       return res.status(400).json({ 
         error: "Title, description, and user ID are required",
         received: { title, description, userId }
+      });
+    }
+
+    // Check for minimum length
+    if (description.length < 10) {
+      return res.status(400).json({
+        error: "Description too short",
+        message: "Please provide more details (at least 10 characters) for better assistance.",
+        type: "INSUFFICIENT_DETAILS",
+        suggestion: "Include specific error messages, steps to reproduce, and what you were trying to accomplish."
       });
     }
 
@@ -183,49 +226,95 @@ app.post('/api/tickets/generate', async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Call AI service for classification
-    let aiResponse;
-    try {
-      console.log("Calling AI service at https://rakshh12-ai-ticketing-engine.hf.space");
-      aiResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
-        title,
-        description
-      }, { 
-        timeout: 30000,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log("AI Service Response:", aiResponse.data);
-      
-      if (!aiResponse.data) {
-        throw new Error("AI service returned empty response");
-      }
-      
-    } catch (aiError) {
-      console.error("AI service error:", aiError.message);
-      console.error("AI error details:", aiError.response?.data || aiError);
-      return res.status(500).json({ 
-        error: "AI classification service failed",
-        details: aiError.message,
-        suggestion: "Please ensure the AI service is running on https://rakshh12-ai-ticketing-engine.hf.space"
+    // Step 1: Enhanced AI Classification
+    const aiAnalysis = await classifyIssueType(title, description);
+    console.log("AI Analysis Result:", JSON.stringify(aiAnalysis, null, 2));
+
+    // ========== UPDATED LOGIC: ALWAYS CREATE TICKET FOR VALID QUERIES ==========
+    
+    // Check if it's just a greeting
+    const isJustGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|how are you|what's up)$/i.test(description.toLowerCase().trim());
+    
+    if (isJustGreeting || description.length < 15) {
+      return res.status(400).json({
+        error: "Description too vague",
+        message: "Please provide details about your technical issue.",
+        type: "INSUFFICIENT_DETAILS",
+        suggestion: "Example: 'My Outlook is not opening' or 'I cannot connect to the WiFi'"
       });
     }
 
-    // Create ticket with AI response
+    // Determine category based on AI analysis
+    let category = aiAnalysis.category || "General IT";
+    let priority = aiAnalysis.priority || "medium";
+    
+    // Override for non-technical queries - still create ticket but mark appropriately
+    if (aiAnalysis.isTechnical === false) {
+      category = "Non-Technical Query";
+      priority = "low";
+    }
+
+    // If it's a mixed query, use the technical parts for categorization
+    if (aiAnalysis.mixedQuery && aiAnalysis.technicalParts && aiAnalysis.technicalParts.length > 0) {
+      // Determine category based on technical parts
+      if (aiAnalysis.technicalParts.some(p => p.includes('email') || p.includes('outlook'))) {
+        category = "Email/Outlook";
+      } else if (aiAnalysis.technicalParts.some(p => p.includes('wifi') || p.includes('network'))) {
+        category = "Network";
+      } else {
+        category = "Mixed Technical";
+      }
+    }
+
+    // Get AI classification from your external service (for technical issues)
+    let aiServiceResponse;
+    if (aiAnalysis.useMainModel !== false) {
+      try {
+        console.log("Calling AI service at https://rakshh12-ai-ticketing-engine.hf.space");
+        aiServiceResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
+          title,
+          description
+        }, { 
+          timeout: 30000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log("AI Service Response:", aiServiceResponse.data);
+        
+        if (aiServiceResponse.data && aiServiceResponse.data.category) {
+          category = aiServiceResponse.data.category;
+          priority = aiServiceResponse.data.priority?.toLowerCase() || priority;
+        }
+        
+      } catch (aiError) {
+        console.error("AI service error, using fallback:", aiError.message);
+        // Fallback logic...
+      }
+    }
+
+    // Create ticket
     const ticketData = {
       title: title,
       description: description,
       userEmail: user.email,
       userId: userId,
-      category: aiResponse.data.category || "General",
-      priority: aiResponse.data.priority?.toLowerCase() || "medium",
+      category: category,
+      priority: priority,
       status: "open",
-      category_confidence: aiResponse.data.category_confidence || 0,
-      priority_confidence: aiResponse.data.priority_confidence || 0,
-      entities: aiResponse.data.entities || { devices: [], usernames: [], error_codes: [] }
+      category_confidence: aiAnalysis.confidence || 0.5,
+      priority_confidence: 0.5,
+      entities: aiServiceResponse?.data?.entities || { devices: [], usernames: [], error_codes: [] },
+      aiAnalysis: aiAnalysis,
+      handledByAI: false,
+      mixedQuery: aiAnalysis.mixedQuery || false
     };
+
+    // Store AI response if available
+    if (aiAnalysis.aiResponse) {
+      ticketData.aiResponse = aiAnalysis.aiResponse;
+    }
 
     console.log("Creating ticket with data:", ticketData);
 
@@ -257,7 +346,21 @@ app.post('/api/tickets/generate', async (req, res) => {
     });
     
     console.log("Ticket created successfully:", ticket.id);
-    res.json(ticket);
+    
+    // Return response based on query type
+    const response = {
+      success: true,
+      ticket: ticket,
+      message: "Ticket created successfully"
+    };
+    
+    // Add AI response for mixed queries
+    if (aiAnalysis.mixedQuery && aiAnalysis.aiResponse) {
+      response.aiResponse = aiAnalysis.aiResponse;
+      response.message = "Ticket created for technical issue. Additional guidance provided above.";
+    }
+    
+    res.json(response);
     
   } catch (err) {
     console.error('Ticket creation failed:', err);
@@ -269,7 +372,56 @@ app.post('/api/tickets/generate', async (req, res) => {
     });
   }
 });
-
+// Get AI responses for a ticket
+app.get('/api/tickets/:id/ai-response', async (req, res) => {
+  try {
+    const ticket = await Ticket.findByPk(req.params.id);
+    
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+    
+    // If ticket already has AI response, return it
+    if (ticket.aiResponse) {
+      return res.json({
+        hasAIResponse: true,
+        response: ticket.aiResponse,
+        handledByAI: ticket.handledByAI || false,
+        createdAt: ticket.created_at
+      });
+    }
+    
+    // Generate new AI response if needed
+    if (ticket.category_confidence < 0.4) {
+      const { generateAIResponse } = require('./utils/aiAssistant');
+      const aiReply = await generateAIResponse({
+        title: ticket.title,
+        description: ticket.description
+      }, ticket.category === "General");
+      
+      // Update ticket with AI response
+      ticket.aiResponse = aiReply;
+      ticket.aiRespondedAt = new Date();
+      await ticket.save();
+      
+      return res.json({
+        hasAIResponse: true,
+        response: aiReply,
+        handledByAI: false,
+        createdAt: new Date()
+      });
+    }
+    
+    res.json({
+      hasAIResponse: false,
+      message: "This ticket doesn't require AI assistance"
+    });
+    
+  } catch (error) {
+    console.error("AI response error:", error);
+    res.status(500).json({ error: "Failed to get AI response" });
+  }
+});
 // --- SUPPORT TEAM API ---
 app.get('/api/stats/support-team', async (req, res) => {
   try {
@@ -984,7 +1136,742 @@ app.post('/api/feedback', async (req, res) => {
     });
   }
 });
+// Add this near other GET endpoints
+// --- AGENTS API ---
+app.get('/api/agents', async (req, res) => {
+  try {
+    // Get all users with agent role
+    const agents = await User.findAll({
+      where: { role: 'agent' },
+      attributes: ['id', 'name', 'email', 'department', 'position', 'createdAt'],
+      raw: true
+    });
 
+    // Calculate active tickets for each agent
+    const agentsWithStats = await Promise.all(
+      agents.map(async (agent) => {
+        const activeTickets = await Ticket.count({
+          where: {
+            assignedTo: agent.email,
+            status: { [Op.in]: ['open', 'in_progress'] }
+          }
+        });
+
+        const resolvedTickets = await Ticket.count({
+          where: {
+            assignedTo: agent.email,
+            status: 'resolved'
+          }
+        });
+
+        return {
+          ...agent,
+          activeTickets,
+          resolvedTickets,
+          totalTickets: activeTickets + resolvedTickets,
+          efficiency: Math.round((resolvedTickets / (activeTickets + resolvedTickets || 1)) * 100)
+        };
+      })
+    );
+
+    // Sort by efficiency
+    agentsWithStats.sort((a, b) => b.efficiency - a.efficiency);
+
+    res.json(agentsWithStats);
+  } catch (err) {
+    console.error('Error fetching agents:', err);
+    res.status(500).json({ 
+      error: "Failed to fetch agents",
+      message: err.message 
+    });
+  }
+});
+// --- ARCHIVE TICKET ENDPOINT ---
+// Handle OPTIONS preflight requests
+app.options('/api/tickets/:id/archive', cors(corsOptions));
+
+
+app.post('/api/tickets/:id/archive', async (req, res) => {
+  try {
+    console.log("Archive request received:", {
+      ticketId: req.params.id,
+      body: req.body
+    });
+
+    const { userId, reason } = req.body;
+    
+    if (!userId || !reason) {
+      return res.status(400).json({ 
+        error: "User ID and reason are required",
+        received: { userId, reason }
+      });
+    }
+
+    // Get user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    // Check authorization
+    if (!['admin', 'agent'].includes(user.role)) {
+      return res.status(403).json({ 
+        error: "Unauthorized",
+        message: "Only agents and admins can archive tickets"
+      });
+    }
+
+    // Get ticket
+    const ticket = await Ticket.findByPk(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    console.log("Found ticket:", {
+      id: ticket.id,
+      title: ticket.title,
+      status: ticket.status
+    });
+
+    // Check if already archived
+    const alreadyArchived = await ArchivedTicket.findOne({
+      where: { originalTicketId: req.params.id }
+    });
+    
+    if (alreadyArchived) {
+      return res.status(400).json({ 
+        error: "Ticket already archived",
+        archiveId: alreadyArchived.id
+      });
+    }
+
+    // Create archived ticket record (matching your model schema)
+    const archivedTicketData = {
+      originalTicketId: ticket.id,
+      title: ticket.title,
+      description: ticket.description,
+      userEmail: ticket.userEmail,
+      userId: ticket.userId,
+      category: ticket.category,
+      priority: ticket.priority,
+      status: ticket.status,
+      assignedTo: ticket.assignedTo,
+      assignedAt: ticket.assignedAt,
+      firstResponseAt: ticket.firstResponseAt,
+      resolved_at: ticket.resolved_at,
+      category_confidence: ticket.category_confidence || 0,
+      priority_confidence: ticket.priority_confidence || 0,
+      entities: ticket.entities || {},
+      feedbackSubmitted: ticket.feedbackSubmitted || false,
+      feedbackRating: ticket.feedbackRating,
+      feedbackComment: ticket.feedbackComment,
+      feedbackDate: ticket.feedbackDate,
+      resolution: ticket.resolution,
+      tags: ticket.tags,
+      aiSummary: ticket.aiSummary,
+      slaBreached: ticket.slaBreached,
+      escalationLevel: ticket.escalationLevel,
+      relatedTickets: ticket.relatedTickets,
+      reassignmentHistory: ticket.reassignmentHistory,
+      aiResponse: ticket.aiResponse,
+      handledByAI: ticket.handledByAI || false,
+      aiAnalysis: ticket.aiAnalysis,
+      needsClarification: ticket.needsClarification || false,
+      archiveReason: reason,
+      archivedBy: user.email,
+      archivedByUserId: user.id,
+      originalCreatedAt: ticket.created_at,
+      originalUpdatedAt: ticket.updatedAt,
+      originalResolvedAt: ticket.resolved_at
+    };
+
+    console.log("Creating archived ticket with data:", archivedTicketData);
+
+    const archivedTicket = await ArchivedTicket.create(archivedTicketData);
+
+    // Delete from active tickets
+    await ticket.destroy();
+
+    console.log("Ticket archived successfully. Archived ID:", archivedTicket.id);
+
+    // Emit socket event
+    io.emit('ticket_archived', {
+      ticketId: req.params.id,
+      archivedBy: user.email,
+      timestamp: new Date()
+    });
+
+    res.json({
+      success: true,
+      message: "Ticket archived successfully",
+      archivedTicketId: archivedTicket.id,
+      originalTicketId: req.params.id,
+      data: {
+        id: archivedTicket.id,
+        title: archivedTicket.title,
+        archivedAt: archivedTicket.archivedAt
+      }
+    });
+
+  } catch (err) {
+    console.error('Archive error:', err);
+    console.error('Error details:', err.message);
+    console.error('Error stack:', err.stack);
+    
+    // Log specific Sequelize errors
+    if (err.name === 'SequelizeValidationError') {
+      console.error('Validation errors:', err.errors.map(e => ({ path: e.path, message: e.message })));
+    }
+    
+    res.status(500).json({ 
+      error: "Failed to archive ticket",
+      message: err.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        name: err.name,
+        errors: err.errors,
+        stack: err.stack
+      } : undefined
+    });
+  }
+});
+
+
+
+// Get archived tickets
+app.get('/api/tickets/archived', async (req, res) => {
+  try {
+    const { userId, adminView = false, page = 1, limit = 50 } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    let where = {};
+    
+    // If not admin, only show user's own tickets
+    if (!adminView && user.role !== 'admin' && user.role !== 'agent') {
+      where.userId = userId;
+    }
+
+    const offset = (page - 1) * limit;
+    
+    const tickets = await ArchivedTicket.findAndCountAll({
+      where,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['archivedAt', 'DESC']]
+    });
+
+    res.json({
+      tickets: tickets.rows,
+      total: tickets.count,
+      page: parseInt(page),
+      totalPages: Math.ceil(tickets.count / limit)
+    });
+  } catch (err) {
+    console.error('Error fetching archived tickets:', err);
+    res.status(500).json({ error: "Failed to fetch archived tickets" });
+  }
+});
+
+// Restore archived ticket (unarchive)
+app.post('/api/tickets/:id/restore', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: "Only admins can restore tickets" });
+    }
+
+    const archivedTicket = await ArchivedTicket.findByPk(req.params.id);
+    if (!archivedTicket) {
+      return res.status(404).json({ error: "Archived ticket not found" });
+    }
+
+    // Check if ticket already exists
+    const existingTicket = await Ticket.findByPk(archivedTicket.originalTicketId);
+    if (existingTicket) {
+      return res.status(400).json({ error: "Active ticket already exists with this ID" });
+    }
+
+    // Restore to active tickets
+    const restoredTicket = await Ticket.create({
+      id: archivedTicket.originalTicketId,
+      title: archivedTicket.title,
+      description: archivedTicket.description,
+      userEmail: archivedTicket.userEmail,
+      userId: archivedTicket.userId,
+      category: archivedTicket.category,
+      priority: archivedTicket.priority,
+      status: archivedTicket.status,
+      assignedTo: archivedTicket.assignedTo,
+      assignedAt: archivedTicket.assignedAt,
+      firstResponseAt: archivedTicket.firstResponseAt,
+      resolved_at: archivedTicket.resolved_at,
+      category_confidence: archivedTicket.category_confidence,
+      priority_confidence: archivedTicket.priority_confidence,
+      entities: archivedTicket.entities,
+      feedbackSubmitted: archivedTicket.feedbackSubmitted,
+      feedbackRating: archivedTicket.feedbackRating,
+      feedbackComment: archivedTicket.feedbackComment,
+      feedbackDate: archivedTicket.feedbackDate,
+      resolution: archivedTicket.resolution,
+      tags: archivedTicket.tags,
+      aiSummary: archivedTicket.aiSummary,
+      slaBreached: archivedTicket.slaBreached,
+      escalationLevel: archivedTicket.escalationLevel,
+      relatedTickets: archivedTicket.relatedTickets,
+      reassignmentHistory: archivedTicket.reassignmentHistory,
+      aiResponse: archivedTicket.aiResponse,
+      handledByAI: archivedTicket.handledByAI,
+      aiAnalysis: archivedTicket.aiAnalysis,
+      needsClarification: archivedTicket.needsClarification,
+      created_at: archivedTicket.originalCreatedAt,
+      updatedAt: archivedTicket.originalUpdatedAt
+    });
+
+    // Delete from archived tickets
+    await archivedTicket.destroy();
+
+    res.json({ 
+      success: true, 
+      message: "Ticket restored successfully",
+      ticket: restoredTicket
+    });
+  } catch (err) {
+    console.error('Restore error:', err);
+    res.status(500).json({ error: "Failed to restore ticket" });
+  }
+});
+
+// Permanent delete archived ticket
+app.delete('/api/tickets/archived/:id', async (req, res) => {
+  try {
+    const { userId, confirm } = req.body;
+    
+    if (!userId || confirm !== 'DELETE') {
+      return res.status(400).json({ error: "User ID and confirmation required" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: "Only admins can permanently delete" });
+    }
+
+    const archivedTicket = await ArchivedTicket.findByPk(req.params.id);
+    if (!archivedTicket) {
+      return res.status(404).json({ error: "Archived ticket not found" });
+    }
+
+    await archivedTicket.destroy();
+
+    res.json({ 
+      success: true, 
+      message: "Archived ticket permanently deleted"
+    });
+  } catch (err) {
+    console.error('Delete error:', err);
+    res.status(500).json({ error: "Failed to delete archived ticket" });
+  }
+});
+
+// Bulk archive tickets
+app.post('/api/tickets/bulk-archive', async (req, res) => {
+  try {
+    const { userId, ticketIds, reason } = req.body;
+    
+    if (!userId || !ticketIds || !Array.isArray(ticketIds) || !reason) {
+      return res.status(400).json({ error: "User ID, ticket IDs, and reason are required" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'agent')) {
+      return res.status(403).json({ error: "Unauthorized to bulk archive tickets" });
+    }
+
+    const tickets = await Ticket.findAll({
+      where: {
+        id: ticketIds
+      }
+    });
+
+    const archivePromises = tickets.map(async (ticket) => {
+      // Create archived ticket record
+      await ArchivedTicket.create({
+        originalTicketId: ticket.id,
+        title: ticket.title,
+        description: ticket.description,
+        userEmail: ticket.userEmail,
+        userId: ticket.userId,
+        category: ticket.category,
+        priority: ticket.priority,
+        status: ticket.status,
+        assignedTo: ticket.assignedTo,
+        assignedAt: ticket.assignedAt,
+        firstResponseAt: ticket.firstResponseAt,
+        resolved_at: ticket.resolved_at,
+        category_confidence: ticket.category_confidence,
+        priority_confidence: ticket.priority_confidence,
+        entities: ticket.entities,
+        feedbackSubmitted: ticket.feedbackSubmitted,
+        feedbackRating: ticket.feedbackRating,
+        feedbackComment: ticket.feedbackComment,
+        feedbackDate: ticket.feedbackDate,
+        resolution: ticket.resolution,
+        tags: ticket.tags,
+        aiSummary: ticket.aiSummary,
+        slaBreached: ticket.slaBreached,
+        escalationLevel: ticket.escalationLevel,
+        relatedTickets: ticket.relatedTickets,
+        reassignmentHistory: ticket.reassignmentHistory,
+        aiResponse: ticket.aiResponse,
+        handledByAI: ticket.handledByAI,
+        aiAnalysis: ticket.aiAnalysis,
+        needsClarification: ticket.needsClarification,
+        archiveReason: reason,
+        archivedBy: user.email,
+        archivedByUserId: user.id,
+        originalCreatedAt: ticket.created_at,
+        originalUpdatedAt: ticket.updatedAt,
+        originalResolvedAt: ticket.resolved_at,
+        ticketData: ticket.toJSON()
+      });
+
+      // Delete from active tickets
+      return ticket.destroy();
+    });
+
+    await Promise.all(archivePromises);
+
+    res.json({ 
+      success: true, 
+      message: `${tickets.length} tickets archived successfully`
+    });
+  } catch (err) {
+    console.error('Bulk archive error:', err);
+    res.status(500).json({ error: "Failed to bulk archive tickets" });
+  }
+});
+// Cleanup old archived tickets (admin only)
+app.delete('/api/tickets/archived/cleanup', async (req, res) => {
+  try {
+    const { userId, daysOld = 90, confirm } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    if (confirm !== 'I understand this action is irreversible') {
+      return res.status(400).json({ error: "Confirmation message is required" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: "Only admins can permanently delete tickets" });
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    const result = await Ticket.destroy({
+      where: {
+        isArchived: true,
+        archivedAt: { [Op.lt]: cutoffDate }
+      }
+    });
+
+    res.json({ 
+      success: true, 
+      message: `${result} archived tickets permanently deleted`,
+      deletedCount: result
+    });
+  } catch (err) {
+    console.error('Cleanup error:', err);
+    res.status(500).json({ error: "Failed to cleanup archived tickets" });
+  }
+});
+// Reassign ticket
+// --- REASSIGN TICKET ENDPOINT (FIXED) ---
+app.patch('/api/tickets/:id/reassign', async (req, res) => {
+  try {
+    console.log("Reassignment request received:", {
+      ticketId: req.params.id,
+      body: req.body,
+      headers: req.headers
+    });
+
+    const { assignedTo, reassignedBy } = req.body;
+    
+    if (!assignedTo || !reassignedBy) {
+      console.error("Missing required fields:", { assignedTo, reassignedBy });
+      return res.status(400).json({ 
+        error: "assignedTo and reassignedBy are required",
+        received: { assignedTo, reassignedBy }
+      });
+    }
+
+    // Get ticket using UUID
+    const ticket = await Ticket.findByPk(req.params.id);
+    
+    if (!ticket) {
+      console.error("Ticket not found:", req.params.id);
+      return res.status(404).json({ error: "Ticket not found" });
+    }
+
+    console.log("Found ticket:", {
+      id: ticket.id,
+      title: ticket.title,
+      currentAssignedTo: ticket.assignedTo
+    });
+
+    // Check if reassignedBy user exists
+    const reassigningUser = await User.findOne({ 
+      where: { email: reassignedBy } 
+    });
+    
+    if (!reassigningUser) {
+      console.error("Reassigning user not found:", reassignedBy);
+      return res.status(404).json({ 
+        error: "User not found", 
+        message: `User ${reassignedBy} does not exist` 
+      });
+    }
+
+    // Check authorization
+    if (reassigningUser.role !== 'admin' && reassigningUser.role !== 'agent') {
+      console.error("Unauthorized reassignment attempt:", {
+        email: reassignedBy,
+        role: reassigningUser.role
+      });
+      return res.status(403).json({ 
+        error: "Unauthorized", 
+        message: "Only admins and agents can reassign tickets" 
+      });
+    }
+
+    // Check if new assignee exists
+    const newAgent = await User.findOne({ 
+      where: { 
+        email: assignedTo,
+        role: 'agent'
+      }
+    });
+    
+    if (!newAgent) {
+      console.error("New assignee not found or not an agent:", assignedTo);
+      return res.status(400).json({ 
+        error: "Invalid assignee", 
+        message: "New assignee must be an existing agent" 
+      });
+    }
+
+    // Initialize reassignment history if not exists
+    const history = ticket.reassignmentHistory || [];
+    
+    // Add to history
+    history.push({
+      from: ticket.assignedTo || "Unassigned",
+      to: assignedTo,
+      by: reassignedBy,
+      at: new Date().toISOString(),
+      ticketId: ticket.id,
+      ticketTitle: ticket.title
+    });
+
+    // Store previous agent for notification
+    const previousAgent = ticket.assignedTo;
+    
+    // Update ticket
+    ticket.assignedTo = assignedTo;
+    ticket.reassignmentHistory = history;
+    ticket.assignedAt = new Date();
+    ticket.updatedAt = new Date();
+    
+    await ticket.save();
+    
+    console.log("Ticket reassigned successfully:", {
+      ticketId: ticket.id,
+      from: previousAgent,
+      to: assignedTo,
+      by: reassignedBy
+    });
+
+    // Create notification for new agent
+    try {
+      await Notification.create({
+        userEmail: assignedTo,
+        userId: newAgent.id,
+        type: 'ticket_assigned',
+        title: 'New Ticket Assigned',
+        message: `Ticket "${ticket.title.substring(0, 30)}..." has been assigned to you`,
+        data: {
+          ticketId: ticket.id,
+          title: ticket.title,
+          priority: ticket.priority,
+          assignedBy: reassignedBy,
+          timestamp: new Date().toISOString()
+        },
+        read: false
+      });
+      console.log("Notification created for new agent:", assignedTo);
+    } catch (notifError) {
+      console.error("Failed to create notification for new agent:", notifError);
+    }
+
+    // Create notification for previous agent if exists
+    if (previousAgent && previousAgent !== assignedTo) {
+      try {
+        const previousUser = await User.findOne({ where: { email: previousAgent } });
+        if (previousUser) {
+          await Notification.create({
+            userEmail: previousAgent,
+            userId: previousUser.id,
+            type: 'ticket_unassigned',
+            title: 'Ticket Unassigned',
+            message: `Ticket "${ticket.title.substring(0, 30)}..." has been reassigned`,
+            data: {
+              ticketId: ticket.id,
+              title: ticket.title,
+              reassignedTo: assignedTo,
+              reassignedBy: reassignedBy,
+              timestamp: new Date().toISOString()
+            },
+            read: false
+          });
+          console.log("Notification created for previous agent:", previousAgent);
+        }
+      } catch (prevNotifError) {
+        console.error("Failed to create notification for previous agent:", prevNotifError);
+      }
+    }
+
+    // Create notification for ticket owner
+    try {
+      await Notification.create({
+        userEmail: ticket.userEmail,
+        userId: ticket.userId,
+        type: 'agent_assigned',
+        title: 'Agent Assigned to Your Ticket',
+        message: `An agent has been assigned to your ticket "${ticket.title.substring(0, 30)}..."`,
+        data: {
+          ticketId: ticket.id,
+          title: ticket.title,
+          assignedTo: assignedTo,
+          assignedAt: new Date().toISOString()
+        },
+        read: false
+      });
+    } catch (ownerNotifError) {
+      console.error("Failed to create notification for ticket owner:", ownerNotifError);
+    }
+
+    // Emit socket event for real-time updates
+    io.emit('ticket_reassigned', {
+      ticketId: ticket.id,
+      previousAgent: previousAgent,
+      newAgent: assignedTo,
+      reassignedBy: reassignedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: "Ticket reassigned successfully",
+      ticket: {
+        id: ticket.id,
+        title: ticket.title,
+        assignedTo: ticket.assignedTo,
+        previousAgent: previousAgent,
+        reassignedBy: reassignedBy,
+        reassignedAt: ticket.assignedAt,
+        reassignmentCount: history.length
+      }
+    });
+
+  } catch (err) {
+    console.error('Reassignment error:', err);
+    console.error('Error stack:', err.stack);
+    
+    // Check for specific Sequelize errors
+    if (err.name === 'SequelizeValidationError') {
+      console.error('Validation errors:', err.errors);
+      return res.status(400).json({
+        error: "Validation error",
+        message: err.errors.map(e => e.message).join(', '),
+        details: err.errors
+      });
+    }
+    
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+      console.error('Foreign key constraint error:', err);
+      return res.status(400).json({
+        error: "Database constraint error",
+        message: "One of the referenced users does not exist"
+      });
+    }
+    
+    res.status(500).json({ 
+      error: "Failed to reassign ticket",
+      message: err.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        name: err.name,
+        stack: err.stack
+      } : undefined
+    });
+  }
+});
+// --- DEBUG ARCHIVE STATUS ---
+// Add this to your server.js file in the API endpoints section
+app.get('/api/debug/archive-status', async (req, res) => {
+  try {
+    // Check if ArchivedTicket table exists
+    const tableExists = await sequelize.queryInterface.showAllTables();
+    const hasArchiveTable = tableExists.some(table => table === 'archived_tickets');
+    
+    if (!hasArchiveTable) {
+      return res.json({
+        status: 'error',
+        message: 'ArchivedTicket table not found',
+        tables: tableExists
+      });
+    }
+    
+    // Try to count records
+    const count = await ArchivedTicket.count();
+    
+    // Check table structure
+    const tableInfo = await sequelize.queryInterface.describeTable('archived_tickets');
+    
+    res.json({
+      status: 'healthy',
+      tableExists: true,
+      recordCount: count,
+      tableColumns: Object.keys(tableInfo),
+      sampleColumns: {
+        originalTicketId: tableInfo.originalTicketId,
+        archivedBy: tableInfo.archivedBy,
+        archivedAt: tableInfo.archivedAt
+      }
+    });
+    
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+});
 // --- HEALTH CHECK API ---
 app.get('/api/health', async (req, res) => {
   try {

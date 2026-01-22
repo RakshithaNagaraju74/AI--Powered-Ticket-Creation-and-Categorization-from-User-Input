@@ -744,7 +744,7 @@ const LiveStats = ({ theme, stats, loading }) => {
 };
 
 // Quick Actions Component
-const QuickActions = ({ theme, onNewTicket, onViewHistory }) => {
+const QuickActions = ({ theme, onNewTicket, onViewHistory, onAIAssistant }) => {
   const actions = [
     {
       label: 'New Ticket',
@@ -761,12 +761,12 @@ const QuickActions = ({ theme, onNewTicket, onViewHistory }) => {
       description: 'Check your previous tickets'
     },
     {
-      label: 'AI Assistant',
-      icon: <Bot size={20} />,
-      color: '#10b981',
-      onClick: () => alert('AI Assistant coming soon!'),
-      description: 'Get instant AI help'
-    },
+  label: 'AI Assistant',
+  icon: <Bot size={20} />,
+  color: '#10b981',
+  onClick: onAIAssistant,
+  description: 'Get instant AI help'
+},
     {
       label: 'Knowledge Base',
       icon: <BookOpen size={20} />,
@@ -839,7 +839,11 @@ const QuickActions = ({ theme, onNewTicket, onViewHistory }) => {
 // Recent Activity Component
 const RecentActivity = ({ theme, tickets }) => {
   const recentTickets = tickets.slice(0, 3);
+  // ========== AI RESPONSE MODAL COMPONENT ==========
 
+// ==============================================
+
+// Helper function for activity icons
   const getActivityIcon = (ticket) => {
     if (ticket.status === 'resolved') return <CheckCircle size={16} color="#10b981" />;
     if (ticket.status === 'in_progress') return <RefreshCw size={16} color="#f59e0b" />;
@@ -868,7 +872,7 @@ const RecentActivity = ({ theme, tickets }) => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {recentTickets.map((ticket, index) => (
             <div
-              key={ticket._id}
+              key={ticket._id || ticket.id || `ticket-${index}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -913,7 +917,182 @@ const RecentActivity = ({ theme, tickets }) => {
     </div>
   );
 };
+const AIResponseModal = ({ response, onClose }) => {
+  if (!response) return null;
 
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2000,
+      animation: 'fadeIn 0.3s ease'
+    }}>
+      <div style={{
+        background: 'white',
+        borderRadius: '24px',
+        padding: '32px',
+        width: '600px',
+        maxWidth: '90%',
+        maxHeight: '80%',
+        overflowY: 'auto',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
+        animation: 'slideUp 0.3s ease'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div>
+            <h3 style={{ fontSize: '20px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Bot size={24} />
+              {response.type === "AI_RESPONSE" ? "AI Assistant Response" : 
+               response.type === "NEEDS_CLARIFICATION" ? "More Information Needed" : 
+               "Helpful Suggestions"}
+            </h3>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0 0' }}>
+              Powered by Groq AI
+            </p>
+          </div>
+          <button 
+            onClick={onClose} 
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              cursor: 'pointer',
+              padding: '8px',
+              borderRadius: '8px',
+              ':hover': {
+                background: '#f1f5f9'
+              }
+            }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+        
+        {response.type === "AI_RESPONSE" && (
+          <>
+            <div style={{
+              background: '#f0fdf4',
+              border: '1px solid #86efac',
+              borderRadius: '16px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <p style={{ fontSize: '16px', lineHeight: 1.6, color: '#166534', margin: 0 }}>
+                {response.response}
+              </p>
+            </div>
+            <p style={{ fontSize: '14px', color: '#64748b' }}>
+              Your query has been handled by our AI assistant. If you need further assistance, 
+              you can still create a regular support ticket.
+            </p>
+          </>
+        )}
+        
+        {response.type === "NEEDS_CLARIFICATION" && (
+          <>
+            <div style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: '16px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <p style={{ fontSize: '16px', lineHeight: 1.6, color: '#92400e', margin: 0 }}>
+                {response.suggestion}
+              </p>
+            </div>
+            
+            <div style={{ marginBottom: '24px' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '12px' }}>
+                Please provide:
+              </h4>
+              <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                {response.requiredDetails && response.requiredDetails.map((detail, index) => (
+                  <li key={index} style={{ marginBottom: '8px', color: '#475569' }}>
+                    {detail}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            
+            <button
+              onClick={onClose}
+              style={{
+                background: '#6366f1',
+                color: 'white',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                width: '100%',
+                transition: 'all 0.2s',
+                ':hover': {
+                  background: '#4f46e5',
+                  transform: 'translateY(-2px)'
+                }
+              }}
+            >
+              Update My Request
+            </button>
+          </>
+        )}
+        
+        {response.type === "INSUFFICIENT_DETAILS" && (
+          <>
+            <div style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '16px',
+              padding: '20px',
+              marginBottom: '24px'
+            }}>
+              <p style={{ fontSize: '16px', lineHeight: 1.6, color: '#991b1b', margin: 0 }}>
+                {response.message}
+              </p>
+            </div>
+            
+            <div style={{ marginBottom: '24px' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '12px' }}>
+                For better assistance, please include:
+              </h4>
+              <p style={{ color: '#475569', lineHeight: 1.6 }}>
+                {response.suggestion}
+              </p>
+            </div>
+            
+            <button
+              onClick={onClose}
+              style={{
+                background: '#6366f1',
+                color: 'white',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                width: '100%',
+                transition: 'all 0.2s',
+                ':hover': {
+                  background: '#4f46e5',
+                  transform: 'translateY(-2px)'
+                }
+              }}
+            >
+              I Understand
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 // Category Distribution Component
 const CategoryDistribution = ({ theme, tickets }) => {
   const categories = {};
@@ -2194,7 +2373,11 @@ const UserDashboard = () => {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showTicketDetails, setShowTicketDetails] = useState(false);
+  const [showAIResponse, setShowAIResponse] = useState(false);
+const [aiResponse, setAiResponse] = useState(null);
   const [selectedTicketDetails, setSelectedTicketDetails] = useState(null);
+  // ========== GROQ AI INTEGRATION ==========
+  // =========================================
   const [greeting, setGreeting] = useState(getTimeGreeting());
   const [aiStatus, setAiStatus] = useState('checking');
   const [userData, setUserData] = useState(null);
@@ -2540,59 +2723,110 @@ useEffect(() => {
   };
 
   const submitRequest = async (e) => {
-    e.preventDefault();
-    if (!issue.description) {
-      alert('Please enter a description');
+  e.preventDefault();
+  
+  // ========== GROQ AI ENHANCEMENT ==========
+  // Check minimum length
+  if (issue.description.length < 20) {
+    setAiResponse({
+      message: "Description too short",
+      suggestion: "Please provide more details (at least 20 characters) for better assistance. Include specific error messages, steps to reproduce, and what you were trying to accomplish.",
+      type: "INSUFFICIENT_DETAILS"
+    });
+    setShowAIResponse(true);
+    return;
+  }
+  // ==========================================
+  
+  setIsProcessing(true);
+  setLastResult(null);
+  setAiResponse(null);
+  addLog("Initializing Secure Handshake...");
+
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login first');
+      window.location.href = '/auth';
       return;
     }
     
-    setIsProcessing(true);
-    setLastResult(null);
-    addLog("Initializing Secure Handshake...");
-
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Please login first');
-        window.location.href = '/auth';
-        return;
-      }
-      
-      const decoded = decodeToken(token);
-      if (!decoded || !decoded.id) {
-        alert('Invalid session. Please login again.');
-        window.location.href = '/auth';
-        return;
-      }
-
-      addLog("Parsing Natural Language Input...");
-      addLog("Tokenizing sentence vectors...");
-      addLog("Running BERT Inference...");
-
-      const res = await axios.post(`${API_BASE_URL}/tickets/generate`, {
-        title: issue.title || 'Support Request',
-        description: issue.description,
-        userId: decoded.id
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 30000
-      });
-
-      addLog("SUCCESS: Prediction Synchronized.");
-      setLastResult(res.data);
-      setTickets(prev => [res.data, ...prev]);
-      setIssue({ title: '', description: '' });
-      setIsProcessing(false);
-      
-      alert('Ticket created successfully with AI classification!');
-    } catch (err) {
-      console.error("Ticket creation error:", err.response?.data || err.message);
-      addLog("CRITICAL_PIPELINE_ERROR: " + (err.response?.data?.error || err.message));
-      setIsProcessing(false);
-      
-      alert(`Failed to create ticket: ${err.response?.data?.error || err.message}`);
+    const decoded = decodeToken(token);
+    if (!decoded || !decoded.id) {
+      alert('Invalid session. Please login again.');
+      window.location.href = '/auth';
+      return;
     }
-  };
+
+    addLog("Analyzing request with AI...");
+
+    const res = await axios.post(`${API_BASE_URL}/tickets/generate`, {
+      title: issue.title || 'Support Request',
+      description: issue.description,
+      userId: decoded.id
+    }, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 30000
+    });
+
+    // ========== GROQ AI HANDLING ==========
+    // Check if AI handled it directly
+    if (res.data.type === "AI_RESPONSE") {
+      setAiResponse({
+        ticket: res.data.ticket,
+        response: res.data.aiResponse,
+        type: "AI_RESPONSE"
+      });
+      setShowAIResponse(true);
+      addLog("AI Assistant handled the query directly");
+      setIsProcessing(false);
+      return;
+    }
+    
+    // Check if needs clarification
+    if (res.data.type === "NEEDS_CLARIFICATION") {
+      setAiResponse({
+        suggestion: res.data.aiSuggestion,
+        requiredDetails: res.data.requiredDetails,
+        type: "NEEDS_CLARIFICATION"
+      });
+      setShowAIResponse(true);
+      setIsProcessing(false);
+      return;
+    }
+    // =======================================
+
+    // Normal ticket creation
+    addLog("SUCCESS: Prediction Synchronized.");
+    setLastResult(res.data);
+    setTickets(prev => [res.data, ...prev]);
+    setIssue({ title: '', description: '' });
+    setIsProcessing(false);
+    
+    alert('Ticket created successfully with AI classification!');
+  } catch (err) {
+    console.error("Ticket creation error:", err.response?.data || err.message);
+    
+    // ========== GROQ AI ERROR HANDLING ==========
+    // Check for insufficient details error
+    if (err.response?.data?.type === "INSUFFICIENT_DETAILS") {
+      setAiResponse({
+        message: err.response.data.message,
+        suggestion: err.response.data.suggestion,
+        type: "INSUFFICIENT_DETAILS"
+      });
+      setShowAIResponse(true);
+      setIsProcessing(false);
+      return;
+    }
+    // ============================================
+    
+    addLog("CRITICAL_PIPELINE_ERROR: " + (err.response?.data?.error || err.message));
+    setIsProcessing(false);
+    
+    alert(`Failed to create ticket: ${err.response?.data?.error || err.message}`);
+  }
+};
 
   const handleGiveFeedback = (ticket) => {
     if (!ticket) return;
@@ -3015,6 +3249,7 @@ useEffect(() => {
           </div>
           
         </div>
+        
               {activeTab === 'desk' && (
          <LiveStats theme={theme} stats={stats} loading={loading} />
        )}
@@ -3186,6 +3421,19 @@ useEffect(() => {
           </div>
         ) : activeTab === 'history' ? (
           <div className="fade-in">
+            <QuickActions 
+    theme={theme} 
+    onNewTicket={() => setActiveTab('desk')}
+    onViewHistory={() => setActiveTab('history')}
+    onAIAssistant={() => {
+      setAiResponse({
+        message: "AI Assistant Ready",
+        suggestion: "Describe your issue or question in detail. Our AI assistant can help with:\n• Quick technical questions\n• Troubleshooting guidance\n• General IT support\n• Best practices advice",
+        type: "INSUFFICIENT_DETAILS"
+      });
+      setShowAIResponse(true);
+    }}
+  />
             <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ fontSize: '24px', fontWeight: '900', margin: 0 }}>Your Support Tickets</h3>
@@ -3429,6 +3677,14 @@ useEffect(() => {
     setSelectedTicket(null); // Clear selected ticket
   }}
   onSubmit={handleFeedbackSubmit} // This should match your function name
+/>
+      {/* AI Response Modal */}
+<AIResponseModal 
+  response={aiResponse}
+  onClose={() => {
+    setShowAIResponse(false);
+    setAiResponse(null);
+  }}
 />
 
       {/* Ticket Details Modal */}
@@ -3679,6 +3935,7 @@ useEffect(() => {
                     background: '#4f46e5',
                     transform: 'translateY(-2px)',
                     boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+
                   }
                 }}
               >
@@ -3688,7 +3945,7 @@ useEffect(() => {
           </div>
         </div>
       )}
-
+      
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         
