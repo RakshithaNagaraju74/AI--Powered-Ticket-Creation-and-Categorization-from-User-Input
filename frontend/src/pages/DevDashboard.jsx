@@ -87,6 +87,9 @@ const DevDashboard = () => {
   const [lastSynced, setLastSynced] = useState(new Date().toLocaleTimeString()); // Timestamp
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [notificationSound, setNotificationSound] = useState(true);
+  const [criticalAlerts, setCriticalAlerts] = useState([]);
+const [alertSoundPlaying, setAlertSoundPlaying] = useState(false);
+const [showCriticalAlertModal, setShowCriticalAlertModal] = useState(false);
   const prevTicketsRef = useRef([]);
   
   // --- DATA STATES ---
@@ -100,6 +103,7 @@ const DevDashboard = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [ticketTrend, setTicketTrend] = useState({ current: 0, previous: 0, direction: 'stable' });
   const [prioritySpike, setPrioritySpike] = useState(null);
+  const shownCriticalIds = useRef(new Set()); // Add this with your other refs
   const [categories, setCategories] = useState([]);
   const [priorities, setPriorities] = useState([]);
   // --- NEW STATE FOR AGENTS & REASSIGNMENT ---
@@ -119,8 +123,7 @@ const DevDashboard = () => {
   });
 
   const agent = JSON.parse(localStorage.getItem('user') || '{"name": "Rakshitha N", "email": "rakshitha@nexus.io", "role": "agent"}');
-
-  // --- 2. LIVE MESSAGE SYSTEM ---
+    // Request notification permission
   const addActivity = useCallback((msg, type = 'info') => {
     const log = { 
       id: Date.now(), 
@@ -131,6 +134,63 @@ const DevDashboard = () => {
     };
     setActivities(prev => [log, ...prev].slice(0, 20));
   }, []);
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+  // --- CRITICAL POPUP DETECTION ---
+// --- CRITICAL POPUP DETECTION ---
+useEffect(() => {
+  const detectAndShowCriticalPopup = () => {
+    // Find open critical/high priority tickets
+    const criticalTickets = tickets.filter(t => 
+      (t.priority === 'critical' || t.priority === 'high') && 
+      t.status === 'open' &&
+      t.created_at && !shownCriticalIds.current.has(t._id || t.id) &&
+      new Date(t.created_at) > new Date(Date.now() - 10 * 60000) // Created in last 10 mins
+    );
+    
+    // If we have critical tickets and no popup is currently showing
+    if (criticalTickets.length > 0 && !criticalPopup) {
+      // Show the most recent critical ticket
+      const mostRecent = criticalTickets[0];
+      
+      // Mark as shown so it never pops up again in this session
+      shownCriticalIds.current.add(mostRecent._id || mostRecent.id);
+      
+      setCriticalPopup(mostRecent);
+      
+      // Play alert sound if notification sound is enabled
+      if (notificationSound && !alertSoundPlaying) {
+        playCriticalAlertSound();
+      }
+      
+      // Show browser notification if supported
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("🚨 CRITICAL PRIORITY DETECTED", {
+          body: `${mostRecent.title}\nPriority: ${mostRecent.priority?.toUpperCase() || 'CRITICAL'}`,
+          icon: "/favicon.ico",
+          requireInteraction: true
+        });
+      }
+      
+      // Add to activity log
+      addActivity(`🚨 CRITICAL PRIORITY DETECTED: ${mostRecent.title}`, "error");
+    }
+  };
+  
+  // Check for critical tickets every 5 seconds
+  const interval = setInterval(detectAndShowCriticalPopup, 5000);
+  
+  // Initial check
+  detectAndShowCriticalPopup();
+  
+  return () => clearInterval(interval);
+}, [tickets, criticalPopup, notificationSound, alertSoundPlaying, addActivity]);
+
+  // --- 2. LIVE MESSAGE SYSTEM ---
+  
 
   // --- FETCH ALL AGENTS FUNCTION ---
   const fetchAllAgents = useCallback(async () => {
@@ -271,8 +331,67 @@ const DevDashboard = () => {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isLive, refreshRate, fetchAllData]); // Include fetchAllData
-
+  }, [isLive, refreshRate, fetchAllData]);
+   // Include fetchAllData
+    // Critical alerts monitoring
+  useEffect(() => {
+    // Check for new critical/high priority tickets
+    const checkCriticalTickets = () => {
+      const criticalTickets = tickets.filter(t => 
+        (t.priority === 'critical' || t.priority === 'high') && 
+        t.status === 'open' &&
+        t.created_at &&
+        new Date(t.created_at) > new Date(Date.now() - 5 * 60000) // Created in last 5 mins
+      );
+      
+      // Check if there are new critical tickets that we haven't alerted yet
+      const newAlerts = criticalTickets.filter(ticket => 
+        !criticalAlerts.some(alert => {
+          const alertId = alert.id || alert._id;
+          const ticketId = ticket.id || ticket._id;
+          return alertId === ticketId;
+        })
+      );
+      
+      if (newAlerts.length > 0) {
+        // Add to alerts
+        setCriticalAlerts(prev => [...prev, ...newAlerts.map(t => ({
+          id: t._id || t.id,
+          title: t.title,
+          priority: t.priority,
+          category: t.category,
+          time: new Date()
+        }))]);
+        
+        // Show modal for first critical alert
+        if (newAlerts[0]) {
+          setShowCriticalAlertModal(true);
+          
+          // Play alert sound if notification sound is enabled
+          if (notificationSound && !alertSoundPlaying) {
+            playCriticalAlertSound();
+          }
+          
+          // Show browser notification if supported
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("🚨 Critical Issue Alert", {
+              body: `${newAlerts[0].title}\nPriority: ${newAlerts[0].priority?.toUpperCase() || 'HIGH'}`,
+              icon: "/favicon.ico",
+              requireInteraction: true
+            });
+          }
+          
+          // Add to activity log
+          addActivity(`🚨 CRITICAL ALERT: ${newAlerts[0].title}`, "error");
+        }
+      }
+    };
+    
+    // Check every 10 seconds
+    const alertInterval = setInterval(checkCriticalTickets, 10000);
+    
+    return () => clearInterval(alertInterval);
+  }, [tickets, criticalAlerts, notificationSound, alertSoundPlaying, addActivity]);
   // --- PRIORITY SPIKE DETECTOR (Real Data) ---
   const detectPrioritySpikes = useCallback((ticketsData) => {
     if (!ticketsData || ticketsData.length === 0) return;
@@ -495,7 +614,46 @@ const DevDashboard = () => {
     oscillator.start();
     oscillator.stop(audioContext.currentTime + 0.5);
   };
-
+    // Critical alert sound function
+  const playCriticalAlertSound = () => {
+  if (!notificationSound || !window.AudioContext) return;
+  
+  setAlertSoundPlaying(true);
+  
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Critical alert sound - urgent siren
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.2);
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.4);
+    oscillator.frequency.setValueAtTime(1200, audioContext.currentTime + 0.6);
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.8);
+    
+    gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 3);
+    
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 3);
+    
+    // Reset sound playing state
+    setTimeout(() => setAlertSoundPlaying(false), 3000);
+    
+  } catch (err) {
+    console.log("Audio error:", err);
+    setAlertSoundPlaying(false);
+  }
+};
   // --- ACTION FUNCTIONS ---
   const updateStatus = async (id, newStatus) => {
     // 1. Validation: Ensure ID exists and is not the string "undefined"
@@ -1027,28 +1185,127 @@ const DevDashboard = () => {
   // Make sure there's a proper closing brace here for the component function
   return ( // Line 1112 - This should be inside the DevDashboard function
     <div style={styles.appContainer}>
-      
-      {/* EMERGENCY MODAL */}
-      {criticalPopup && (
-  <div style={styles.modalBackdrop}>
-    <div style={styles.modalBody}>
-      <div style={styles.modalHeader}><Flame size={32} /> CRITICAL_PRIORITY_DETECTED</div>
-      <h2 style={{ fontSize: '32px', margin: '20px 0', letterSpacing: '-2px' }}>{criticalPopup.title}</h2>
-      <p style={{ opacity: 0.8, marginBottom: '30px' }}>
-        Ticket ID: #{criticalPopup._id?.slice(-6).toUpperCase() || criticalPopup.id?.slice(-6).toUpperCase() || 'N/A'}
-        <br/>
-        Urgent attention required. Priority: {criticalPopup.priority?.toUpperCase()}
-        <br/>
-        Category: {criticalPopup.category || 'Unknown'}
+      {/* EMERGENCY MODAL - MATCHING IMAGE UI & FUNCTIONAL FIX */}
+      {/* EMERGENCY MODAL - FUNCTIONAL FIX */}
+{criticalPopup && (
+  <div style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(15, 23, 42, 0.9)', 
+    backdropFilter: 'blur(8px)',
+    zIndex: 9999,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }}>
+    <div style={{
+      width: '550px',
+      background: 'linear-gradient(135deg, #ff4d4d 0%, #f857a6 100%)', 
+      padding: '45px',
+      borderRadius: '40px',
+      color: '#fff',
+      textAlign: 'left',
+      boxShadow: '0 30px 60px rgba(255, 77, 77, 0.4)', 
+      animation: 'fadeIn 0.3s ease-out',
+    }}>
+      {/* HEADER SECTION */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', opacity: 0.9 }}>
+        <Flame size={28} fill="white" />
+        <span style={{ fontWeight: '900', letterSpacing: '2px', fontSize: '12px', textTransform: 'uppercase' }}>
+          CRITICAL_PRIORITY_DETECTED
+        </span>
+      </div>
+
+      {/* TICKET ID & TITLE */}
+      <div style={{ marginBottom: '25px' }}>
+        <span style={{ 
+            fontSize: '14px', 
+            fontWeight: '800', 
+            background: 'rgba(0,0,0,0.2)', 
+            padding: '4px 12px', 
+            borderRadius: '8px',
+            marginBottom: '10px',
+            display: 'inline-block'
+        }}>
+          TICKET_ID: #{criticalPopup._id?.slice(-6).toUpperCase() || criticalPopup.id?.slice(-6).toUpperCase() || 'N/A'}
+        </span>
+        <h2 style={{ fontSize: '48px', margin: 0, fontWeight: '900', letterSpacing: '-1.5px', lineHeight: 1.1 }}>
+          {criticalPopup.title}
+        </h2>
+      </div>
+
+      {/* METADATA DESCRIPTION */}
+      <p style={{ fontSize: '18px', lineHeight: '1.6', marginBottom: '45px', opacity: 0.95, fontWeight: '500' }}>
+        Urgent attention required. Priority: <strong style={{color: '#fff', textDecoration: 'underline'}}>{criticalPopup.priority?.toUpperCase()}</strong><br/>
+        Category: <span style={{ textTransform: 'capitalize' }}>{criticalPopup.category || 'Hardware Issue'}</span>
       </p>
-      <div style={{ display: 'flex', gap: '15px' }}>
-        <button onClick={() => { setSelectedTicket(criticalPopup); setCriticalPopup(null); }} style={styles.ackBtn}>TRIAGE_NOW</button>
-        <button onClick={() => setCriticalPopup(null)} style={styles.dismissBtn}>DISMISS</button>
+      
+      {/* ACTION BUTTONS */}
+      <div style={{ display: 'flex', gap: '20px' }}>
+        {/* TRIAGE_NOW: Solid White with Red Bold Text */}
+        <button 
+          onClick={(e) => { 
+            e.preventDefault();
+            e.stopPropagation();
+            setCriticalPopup(null); 
+            setSelectedTicket(criticalPopup); 
+            setFilter({ status: 'all', priority: 'all', category: 'all', agent: 'all' });
+            setCriticalAlerts([]); 
+            addActivity(`🎯 TRIAGE: Navigated to ${criticalPopup.title}`, "info");
+          }} 
+          style={{
+            flex: 1.2,
+            background: '#fff', 
+            color: '#ff4d4d', 
+            border: 'none', 
+            padding: '18px 0', 
+            borderRadius: '20px', 
+            fontWeight: '900', 
+            cursor: 'pointer',
+            fontSize: '15px',
+            textTransform: 'uppercase',
+            boxShadow: '0 10px 20px rgba(0,0,0,0.1)',
+            transition: 'transform 0.2s'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+          onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        >
+          TRIAGE_NOW
+        </button>
+
+        {/* DISMISS: Transparent with Bold Outline */}
+        <button 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setCriticalPopup(null);
+            addActivity("Alert dismissed", "warning");
+          }} 
+          style={{
+            flex: 1,
+            background: 'transparent', 
+            color: '#fff', 
+            border: '2px solid #fff', 
+            padding: '18px 0', 
+            borderRadius: '20px', 
+            fontWeight: '900', 
+            cursor: 'pointer',
+            fontSize: '15px',
+            textTransform: 'uppercase',
+            transition: 'background 0.2s'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+        >
+          DISMISS
+        </button>
       </div>
     </div>
   </div>
 )}
-
       {/* PRIORITY SPIKE ALERT */}
       {prioritySpike && (
         <div style={styles.spikeAlert}>
@@ -1243,7 +1500,85 @@ const DevDashboard = () => {
           ) : (
             <p style={{fontSize: '12px', color: theme.muted, padding: '10px'}}>No agent data available</p>
           )}
+                    {/* Critical Alerts in Sidebar */}
+          {criticalAlerts.length > 0 && (
+            <>
+              <p style={{...styles.label, marginTop: '40px', color: '#ef4444'}}>
+                🚨 CRITICAL ALERTS ({criticalAlerts.length})
+              </p>
+              {criticalAlerts.slice(0, 3).map(alert => (
+                <div 
+                  key={alert.id} 
+                  style={{
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '12px',
+                    padding: '12px',
+                    marginBottom: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    ':hover': {
+                      background: '#fee2e2',
+                      transform: 'translateX(4px)'
+                    }
+                  }}
+                  onClick={() => {
+                    const ticket = tickets.find(t => {
+                      const ticketId = t._id || t.id;
+                      return ticketId === alert.id;
+                    });
+                    if (ticket) {
+                      setSelectedTicket(ticket);
+                      setIsSidebarOpen(false);
+                    }
+                  }}
+                >
+                  <div style={{
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    color: '#b91c1c',
+                    marginBottom: '5px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span>CRITICAL</span>
+                    <Clock size={12} />
+                  </div>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    color: '#1e293b',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {alert.title}
+                  </div>
+                  <div style={{
+                    fontSize: '10px',
+                    color: '#94a3b8',
+                    marginTop: '4px'
+                  }}>
+                    {alert.category} • {new Date(alert.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </div>
+                </div>
+              ))}
+              {criticalAlerts.length > 3 && (
+                <div style={{
+                  fontSize: '11px',
+                  color: '#ef4444',
+                  textAlign: 'center',
+                  padding: '8px',
+                  fontWeight: '600'
+                }}>
+                  + {criticalAlerts.length - 3} more critical alerts
+                </div>
+              )}
+            </>
+          )}
           
+          {/* AGENT LOAD BALANCER */}
           {/* AGENT LOAD BALANCER */}
           {agentStats.length > 0 && (
             <>
@@ -2098,7 +2433,11 @@ const DevDashboard = () => {
       </div>
     </div>
   </div>
-)}  {/* ARCHIVE MANAGEMENT PANEL */}
+)} 
+      {/* Critical Alert Modal */}
+      {/* Critical Alert Modal */}
+
+      {/* ARCHIVE MANAGEMENT PANEL */}
 {showArchivePanel && (
   <div style={styles.modalBackdrop}>
     <div style={styles.reassignModal}>
@@ -2292,18 +2631,31 @@ const DevDashboard = () => {
     </div>
   </div>
 )}  
-      <style>{`
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .fade-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(8deg); } 75% { transform: rotate(-8deg); } }
-        .shake { animation: shake 0.4s infinite; }
-        .pulse-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block; margin-left: 10px; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); } }
-        .resolve-btn { background: #10b981; color: #fff; border: none; padding: 18px 36px; border-radius: 16px; font-weight: 900; cursor: pointer; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3); transition: 0.3s; }
-        .resolve-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(16, 185, 129, 0.5); }
-      `}</style>
+                  <style>{`
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .fade-in { animation: fadeIn 0.4s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(8deg); } 75% { transform: rotate(-8deg); } }
+  .shake { animation: shake 0.4s infinite; }
+  .pulse-dot { width: 8px; height: 8px; background: #10b981; border-radius: '50%'; display: 'inline-block'; margin-left: '10px'; animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); } }
+  .resolve-btn { background: #10b981; color: #fff; border: none; padding: 18px 36px; border-radius: 16px; font-weight: 900; cursor: pointer; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3); transition: 0.3s; }
+  .resolve-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 35px rgba(16, 185, 129, 0.5); }
+  
+  /* ========== CRITICAL POPUP ANIMATIONS ========== */
+  @keyframes pulseBackground {
+    0%, 100% { background: rgba(239, 68, 68, 0.95); }
+    50% { background: rgba(239, 68, 68, 0.85); }
+  }
+  
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+  }
+  /* ================================================ */
+`}</style>
     </div>
   );
 };
@@ -2579,11 +2931,65 @@ playPauseBtn: {
   assignQuickBtn: { background: '#6366f1', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', marginTop: '10px', width: '100%' },
   
   solvedLabel: { background: '#dcfce7', color: '#166534', padding: '16px 28px', borderRadius: '16px', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px' },
-  modalBackdrop: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modalBody: { width: '500px', background: '#ef4444', padding: '48px', borderRadius: '32px', color: '#fff', boxShadow: '0 30px 60px rgba(239,68,68,0.4)' },
-  modalHeader: { display: 'flex', alignItems: 'center', gap: '15px', fontSize: '12px', fontWeight: '900', letterSpacing: '2px' },
-  ackBtn: { background: '#fff', color: '#ef4444', border: 'none', padding: '16px 32px', borderRadius: '16px', fontWeight: '900', cursor: 'pointer' },
-  dismissBtn: { background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid #fff', padding: '16px 32px', borderRadius: '16px', fontWeight: '900', cursor: 'pointer' },
+  modalBackdrop: { 
+  position: 'fixed', 
+  inset: 0, 
+  background: 'rgba(239, 68, 68, 0.95)', 
+  backdropFilter: 'blur(10px)', 
+  zIndex: 3000, 
+  display: 'flex', 
+  alignItems: 'center', 
+  justifyContent: 'center',
+  animation: 'pulseBackground 2s infinite'
+},
+modalBody: { 
+  width: '500px', 
+  background: '#ef4444', 
+  padding: '48px', 
+  borderRadius: '32px', 
+  color: '#fff', 
+  boxShadow: '0 30px 60px rgba(239,68,68,0.4)',
+  animation: 'shake 0.5s'
+},
+modalHeader: { 
+  display: 'flex', 
+  alignItems: 'center', 
+  gap: '15px', 
+  fontSize: '12px', 
+  fontWeight: '900', 
+  letterSpacing: '2px',
+  color: '#fff'
+},
+ackBtn: { 
+  background: '#fff', 
+  color: '#ef4444', 
+  border: 'none', 
+  padding: '16px 32px', 
+  borderRadius: '16px', 
+  fontWeight: '900', 
+  cursor: 'pointer',
+  fontSize: '16px',
+  transition: 'all 0.2s',
+  ':hover': {
+    background: '#f1f5f9',
+    transform: 'translateY(-2px)'
+  }
+},
+dismissBtn: { 
+  background: 'rgba(255,255,255,0.1)', 
+  color: '#fff', 
+  border: '2px solid #fff', 
+  padding: '16px 32px', 
+  borderRadius: '16px', 
+  fontWeight: '900', 
+  cursor: 'pointer',
+  fontSize: '16px',
+  transition: 'all 0.2s',
+  ':hover': {
+    background: 'rgba(255,255,255,0.2)',
+    transform: 'translateY(-2px)'
+  }
+},
   navLink: (active) => ({ width: '100%', padding: '18px', borderRadius: '16px', border: 'none', background: active ? '#f1f5f9' : 'none', textAlign: 'left', fontWeight: '800', color: active ? '#6366f1' : '#64748b', cursor: 'pointer', marginBottom: '8px' }),
   backdrop: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.1)', zIndex: 900 },
   agentInfo: { marginTop: 'auto', borderTop: '1px solid #f1f5f9', paddingTop: '20px' },
