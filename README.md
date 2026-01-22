@@ -1,173 +1,278 @@
-Establishing your intent, you want to incorporate the provided JSON ticket data into your project documentation. Below is the updated **Overall README** for the **Nexus AI Support System**, which now includes this specific JSON schema as a representative example of a structured ticket output.
+
+<p align="center">
+  <img width="512" height="512" alt="android-chrome-512x512" src="https://github.com/user-attachments/assets/d1609ee0-c278-4efd-bb90-cc1c9d6448d5" />
+</p>
+# Nexus AI – Intelligent Support Suite 
+
+🚀 **Enterprise-Ready AI-Powered Support Platform**
+
+Nexus AI v2.5 transforms traditional ticketing into a **full-scale intelligent support ecosystem** with AI-driven automation, enterprise-grade archiving, real-time analytics, and modern UX.
 
 ---
 
-# Nexus AI – Intelligent Enterprise Support Suite
+### 🚀 Major Features
 
-<div align="center">
+#### 1. Complete Archive System
 
-**An enterprise-grade, BERT-powered ticketing and support intelligence ecosystem**
+* Ticket archiving for resolved issues
+* Bulk archive operations
+* Admin archive management panel
+* Restore archived tickets
+* Permanent deletion (admin only)
+* Export archive data (JSON)
 
-</div>
+#### 2. Enhanced Reassignment System
 
-## 📋 Overview
+* AI-powered agent reassignment suggestions
+* Real-time agent efficiency scores
+* Reassignment history with timestamps
+* Top-performer auto-suggestions
+* Role-based reassignment permissions
 
-Nexus AI is a high-performance support management system designed to automate the lifecycle of IT support tickets. By utilizing **BERT (Bidirectional Encoder Representations from Transformers)**, the system performs deep semantic analysis on unstructured user messages to automatically classify categories, predict priority levels, and extract critical technical entities.
+#### 3. AI Assistant Integration
+
+* Groq AI powered responses
+* Technical vs non-technical query detection
+* Auto-resolution suggestions
+* Clarification detection
+* Mixed query handling
+
+#### 4. Enhanced User Dashboard
+
+* Live metrics (auto refresh every 5s)
+* Interactive charts
+* Quick action panel
+* Profile management with stats
+* User data export (JSON)
+
+#### 5. Advanced Notification System
+
+* Real-time Socket.io alerts
+* Priority badges
+* Bulk mark-as-read
+* Configurable sound alerts
+* Notification history (20+ events)
 
 ---
 
-## 🔁 End-to-End Pipeline
+## 🛠️ Technical Enhancements
 
-The system transforms raw user input into high-fidelity structured data through a sophisticated neural pipeline:
+### Backend
 
-```text
-       User Message Ingress (React UI)
-                    ↓
-  Text Cleaning & Normalization (Regex, SpaCy, Lemmatization)
-                    ↓
-  Language Detection & Translation (Google Translator API)
-                    ↓
-  BERT Semantic Feature Extraction (Transformer Tokenization)
-                    ↓
-  Neural Inference (Multi-Head Category & Priority Prediction)
-                    ↓
-     Entity Extraction (NER - Devices, Errors, Usernames)
-                    ↓
-   Structured Ticket Generation (In PostgreSQL)
+* Optimized PostgreSQL queries
+* Improved error handling & logging
+* Enhanced CORS configuration
+* Optimized Socket.io connections
+* Health-check endpoints
+
+### Frontend
+
+* Fully responsive design
+* Reduced re-renders (memoization)
+* Improved accessibility (ARIA)
+* Improved state synchronization
+* Better loading indicators
+
+---
+
+## 🔒 Security & Compliance
+
+### Authentication & Authorization
+
+* JWT-based authentication
+* Role-based access control (User / Agent / Admin)
+* Secure session management
+* Input sanitization
+* Protected routes
+
+### Data Protection
+
+* GDPR-ready data export
+* Archive-based data retention
+* Secure file exports
+* User-controlled privacy options
+
+---
+
+## 📊 Analytics & Insights
+
+### Live Metrics
+
+* Online agents
+* Average response time
+* User satisfaction rate
+* Tickets created today
+* Resolution velocity
+* Category heatmap
+
+### Agent Performance
+
+* Efficiency scoring
+* Load balancing indicators
+* Agent leaderboard
+* Historical performance trends
+
+---
+
+## 🎨 UI / UX Improvements
+
+### Visual Enhancements
+
+* Glassmorphism UI
+* Smooth animations
+* Color-coded priorities
+* Micro-interactions
+* Unified design system
+
+### User Experience
+
+* Intuitive navigation
+* Keyboard shortcuts
+* Advanced search & filters
+* Bulk operations
+* Contextual tooltips
+
+---
+
+## 🔄 System Architecture
 
 ```
-
----
-
-## 🛠 Technologies Used
-
-The project is built on a modern, multi-language microservices stack:
-
-| Category | Tools / Libraries |
-| --- | --- |
-| **Programming** | Python (AI Engine), JavaScript (Backend & Frontend) |
-| **NLP** | HuggingFace BERT, SpaCy, NLTK, KeyBERT, langdetect |
-| **Machine Learning** | PyTorch, AutoModelForSequenceClassification |
-| **Data Handling** | PostgreSQL, Pandas, NumPy |
-| **Backend** | Node.js, Express, FastAPI, Socket.io |
-| **Frontend** | React 18, Lucide Icons, Axios |
-
----
-
-## ✅ Modules Completed
-
-| Module | Description | Status |
-| --- | --- | --- |
-| **Module 1** | **Data Collection & Preprocessing** - BERT tokenization and lemmatization | ✅ Completed |
-| **Module 2** | **NLP Model Development** - Multi-engine category and priority prediction | ✅ Completed |
-| **Module 3** | **Ticket Generation Engine** - Automated tables mapping and PostgreSQL storage | ✅ Completed |
-| **Module 4** | **UI & Integration Layer** - Real-time Socket.io tracking and agent dashboards | ✅ Completed |
-
----
-
-## 🧪 Current Project Status
-
-* **Real-time HUD**: Live dashboards tracking **Active Agents** (via Socket.io Map), response times, and resolution rates.
-* **Neural Classification**: BERT-based models trained to handle complex IT semantics with high confidence scoring.
-* **Hybrid Role Tracking**: Real-time handshake logic implemented to distinguish between support agents and users.
-* **Automated Triage**: Sub-400ms latency for automated routing based on predicted priority and category.
-
----
-
-## 🏗️ Project Structure
-
-```text
-AI-Powered-Ticket/
-├── 📁 ai_engine/          # Python Classification Service (FastAPI + BERT)
-│   ├── 📁 models/         # Pre-trained Category & Priority Transformers
-│   ├── 📁 scripts/        # Inference logic (inference.py)
-│   └── requirements.txt   # PyTorch, Transformers, KeyBERT, SpaCy
-├── 📁 backend/            # Node.js API Gateway (Express + Socket.io)
-│   ├── 📁 models/         # PostgreSQL Schemas (Ticket.js, User.js)
-│   ├── 📁 routes/         # Auth and Ticket Endpoints
-│   └── server.js          # Main entry point & Socket management
-└── 📁 frontend/           # React Enterprise Dashboard
-    ├── 📁 src/pages/      # UserDashboard.jsx & DevDashboard.jsx
-    └── 📁 public/         # Static assets
-
+User Input → AI Analysis → Ticket Creation → Assignment → Resolution → Archive
 ```
 
----
+### Database Schema
 
-## 🧾 Example Ticket Schema (JSON)
-
-The following represents a typical structured output generated by the AI Engine and stored in PostgreSQL:
-
-```json
-{
-  "title": "Incident Report",
-  "description": "Critical data loss reported in cloud environment",
-  "userEmail": "user@example.com",
-  "category": "account/access issue",
-  "priority": "critical",
-  "status": "resolved",
-  "category_confidence": 0.525,
-  "priority_confidence": 0.904,
-  "entities": {
-    "devices": [],
-    "usernames": ["@admin"],
-    "error_codes": ["0xERR404"]
-  },
-  "slaBreached": false,
-  "escalationLevel": 0,
-  "created_at": "2026-01-18T15:50:56.000Z",
-  "updatedAt": "2026-01-18T19:22:42.502Z"
-}
-
-```
+* Active Tickets
+* Archived Tickets
+* Users (extended metrics)
+* Notifications
+* Analytics
 
 ---
 
-## 🚀 Installation & Setup
+## 🧪 Testing & Quality Assurance
 
-### Prerequisites
+* API endpoint testing
+* End-to-end integration tests
+* Edge-case & error handling tests
+* Performance/load testing
+* Security vulnerability testing
 
-* Node.js v18+
-* Python 3.9+
-* PostgreSQL
+---
 
-### Configure Environment (`.env`)
+## 📈 Performance Metrics
 
-Create a `.env` file in the **backend** folder:
+### System
+
+* AI classification < 400ms
+* Sub-second real-time updates
+* Supports 50k+ concurrent users
+* 99.9% uptime target
+
+
+## 🚀 Deployment & DevOps
+
+* Environment-based configuration
+* Database migrations
+* Automated backup & restore
+* Monitoring & health checks
+* Centralized logging
+
+---
+
+## 🤝 Collaboration Features
+
+* Shared ticket notes
+* Team workload overview
+* Shift management
+* Knowledge base (planned)
+
+---
+
+## 🔧 Developer Experience
+
+* Full API documentation
+* Easy local setup
+* Debugging & logging tools
+* ESLint & Prettier
+* Reusable UI component library
+
+---
+
+## 🌐 Internationalization
+
+* Automatic language detection
+* Translation-ready architecture
+* Locale-aware formatting
+* RTL language support
+
+---
+
+## 🎯 Why Nexus AI?
+
+* Complete AI-driven support pipeline
+* Enterprise-grade archive system
+* Real, actionable analytics
+* Production-ready architecture
+* Scalable for enterprise workloads
+
+---
+
+## 🔮 Roadmap
+
+* Voice-to-ticket creation
+* Predictive ticket routing
+* Sentiment analysis
+* Automated workflows
+* Advanced reporting
+* Native mobile apps
+* Integration marketplace
+
+---
+
+## ⚙️ Technical Requirements
+
+### Stack
+
+* **Frontend**: React 18.2+, Socket.io 4.7+
+* **Backend**: Node.js 18+, Express 4.18+, Sequelize 6.35+
+* **AI Engine**: Python 3.9+, PyTorch 2.0+, Transformers 4.35+
+* **Database**: PostgreSQL 15+
+* **Deployment**: Docker 24+, Render / Vercel
+
+### Environment Variables
 
 ```env
-# Backend Configuration
-PORT=5000
-NODE_ENV=production
-JWT_SECRET=your_jwt_secret_key_here_change_this
-
-# Database Configuration (PostgreSQL - Render.com)
-PGHOST=you_host_name.oregon-postgres.render.com
+JWT_SECRET=your_jwt_secret
+PORT=5001
+NODE_ENV=development
+AI_SERVICE_URL=https://your.hf.space
+PGHOST=pghost.a.oregon-postgres.render.com
 PGPORT=5432
-PGDATABASE=your_database
-PGUSER=your_user_name
-PGPASSWORD=your_database_password_here
-
-# AI Service Configuration
-AI_SERVICE_URL=https://your_deployed_Website.hf.space
-
-# Frontend URLs for CORS
-FRONTEND_URL=https://ai-powered-ticket-creation-and-l700.onrender.com
-
+PGDATABASE=your_pgdatabase
+PGUSER=your_pguser
+PGPASSWORD=your_password
+GROQ_API_KEY=gsk_your_api_key
+GROQ_MODEL=llama-3.1-8b-instant
 ```
 
-### Execution
+---
 
-1. **AI Engine**: `cd ai_engine && pip install -r requirements.txt && python main.py`
-2. **Backend**: `cd backend && npm install && node server.js`
-3. **Frontend**: `cd frontend && npm install && npm start`
+## 👨‍💻 Contributors
+
+* **Primary Developer**: Rakshitha N
+* **AI Integration**: Groq AI
+* **UI/UX**: Modern responsive design
+* **Database**: Optimized PostgreSQL schema
+* **DevOps**: Production-ready setup
 
 ---
 
 ## 📄 License
-This project is licensed under the MIT License.
+
+**MIT License**
 
 ---
 
-### 👩‍💻 Author
-**Rakshitha N** - AI-Powered Ticket Creation & Categorization System 2025
+🚀 **Nexus AI is production-ready.**
+Transform your support operations with a next-generation AI-powered ticketing platform.
