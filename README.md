@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img width="512" height="512" alt="android-chrome-512x512" src="https://github.com/user-attachments/assets/d1609ee0-c278-4efd-bb90-cc1c9d6448d5" />
+  <img width="500" height="500" alt="logo-preview1" src="https://github.com/user-attachments/assets/721cfcbe-fb28-43c8-8472-822225496c45" />
 </p>
 # Nexus AI – Intelligent Support Suite 
 
