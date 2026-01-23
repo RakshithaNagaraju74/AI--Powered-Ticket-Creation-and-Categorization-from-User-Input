@@ -228,7 +228,7 @@ app.post('/api/tickets/generate', async (req, res) => {
 
     // Step 1: Enhanced AI Classification
     const aiAnalysis = await classifyIssueType(title, description);
-    console.log("AI Analysis Result:", JSON.stringify(aiAnalysis, null, 2));
+console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
 
     // ========== UPDATED LOGIC: ALWAYS CREATE TICKET FOR VALID QUERIES ==========
     
@@ -268,8 +268,10 @@ app.post('/api/tickets/generate', async (req, res) => {
 
     // Get AI classification from your external service (for technical issues)
     let aiServiceResponse;
+    let externalConfidence = null;
     if (aiAnalysis.useMainModel !== false) {
       try {
+        console.log("Calling main AI model at HF Space...");
         console.log("Calling AI service at https://rakshh12-ai-ticketing-engine.hf.space");
         aiServiceResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
           title,
@@ -283,16 +285,29 @@ app.post('/api/tickets/generate', async (req, res) => {
         
         console.log("AI Service Response:", aiServiceResponse.data);
         
-        if (aiServiceResponse.data && aiServiceResponse.data.category) {
-          category = aiServiceResponse.data.category;
-          priority = aiServiceResponse.data.priority?.toLowerCase() || priority;
-        }
-        
-      } catch (aiError) {
-        console.error("AI service error, using fallback:", aiError.message);
-        // Fallback logic...
-      }
+       // In your /api/tickets/generate endpoint, update this section:
+if (aiServiceResponse?.data) {
+    category = aiServiceResponse.data.category;
+    priority = aiServiceResponse.data.priority?.toLowerCase() || priority;
+    
+    // PROPERLY capture category confidence from AI service
+    externalConfidence = aiServiceResponse.data.category_confidence || 
+                         aiServiceResponse.data.confidence || 
+                         aiServiceResponse.data.score || 
+                         0.5;
+    
+    // Also capture priority confidence
+    const priorityConfidence = aiServiceResponse.data.priority_confidence || 
+                              aiServiceResponse.data.priority_score || 
+                              0.5;
+    
+    console.log(`Main model category confidence: ${externalConfidence}`);
+    console.log(`Main model priority confidence: ${priorityConfidence}`);
+}
+    } catch (aiError) {
+        console.error("Main AI model failed:", aiError.message);
     }
+}
 
     // Create ticket
     const ticketData = {
@@ -303,8 +318,10 @@ app.post('/api/tickets/generate', async (req, res) => {
       category: category,
       priority: priority,
       status: "open",
-      category_confidence: aiAnalysis.confidence || 0.5,
-      priority_confidence: 0.5,
+      category_confidence: externalConfidence || aiAnalysis.confidence || 0.5,
+  // Use priority_confidence from AI service if available
+  priority_confidence: aiServiceResponse?.data?.priority_confidence || 
+                      (aiServiceResponse?.data?.priority_score ? aiServiceResponse.data.priority_score : 0.5),
       entities: aiServiceResponse?.data?.entities || { devices: [], usernames: [], error_codes: [] },
       aiAnalysis: aiAnalysis,
       handledByAI: false,
