@@ -10,6 +10,9 @@ const groq = new Groq({
 
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 
+// utils/aiAssistant.js - UPDATED VERSION
+// This handles greetings and personal issues BEFORE sending to main AI model
+
 const classifyIssueType = async (title, description) => {
   try {
     console.log(`\n=== CLASSIFYING: "${title}" ===`);
@@ -47,16 +50,16 @@ const classifyIssueType = async (title, description) => {
     // 2. Comprehensive personal/HR issue detection
     const personalIssueKeywords = {
       // HR & Policies
-      hr: ['hr department', 'human resources', 'hr policy', 'hr issue'],
+      hr: ['hr department', 'human resources', 'hr policy', 'hr issue', 'hr team'],
       policies: ['vacation policy', 'leave policy', 'sick leave', 'maternity leave', 
                  'paternity leave', 'bereavement leave', 'company policy', 'work policy',
                  'attendance policy', 'late policy', 'absence policy', 'remote work policy',
-                 'hybrid policy', 'dress code', 'code of conduct'],
+                 'hybrid policy', 'dress code', 'code of conduct', 'work policy'],
       
       // Compensation & Benefits
       salary: ['salary slip', 'pay slip', 'salary query', 'paycheck', 'salary issue',
                'bonus', 'increment', 'raise', 'promotion', 'appraisal', 'performance review',
-               'overtime pay', 'late payment'],
+               'overtime pay', 'late payment', 'salary query'],
       benefits: ['health insurance', 'medical insurance', 'dental insurance', 'vision insurance',
                  '401k', 'retirement plan', 'provident fund', 'employee benefits', 'perks',
                  'allowance', 'travel allowance', 'food allowance', 'housing allowance'],
@@ -128,10 +131,6 @@ const classifyIssueType = async (title, description) => {
       // Development
       'code', 'programming', 'development', 'api', 'integration', 'deployment',
       'testing', 'debug', 'compile', 'build', 'deploy', 'git', 'repository',
-      
-      // Error Patterns
-      /error\s+code\s+\d+/i, /exception\s+\w+/i, /fatal\s+error/i, /system\s+crash/i,
-      /blue\s+screen/i, /kernel\s+panic/i, /segmentation\s+fault/i,
     ];
     
     // Analyze the query
@@ -141,15 +140,9 @@ const classifyIssueType = async (title, description) => {
     
     // Check for technical keywords
     for (const keyword of technicalKeywords) {
-      if (typeof keyword === 'string') {
-        if (fullText.includes(keyword)) {
-          hasTechnicalIssue = true;
-          console.log(`Found technical keyword: ${keyword}`);
-          break;
-        }
-      } else if (keyword.test && keyword.test(fullText)) {
+      if (fullText.includes(keyword)) {
         hasTechnicalIssue = true;
-        console.log(`Found technical pattern: ${keyword}`);
+        console.log(`Found technical keyword: ${keyword}`);
         break;
       }
     }
@@ -193,28 +186,7 @@ const classifyIssueType = async (title, description) => {
       console.log(`Handling: Personal/HR issue (${detectedPersonalCategory})`);
       
       // Generate appropriate response based on category
-      let aiResponse = '';
-      switch(detectedPersonalCategory) {
-        case 'hr':
-        case 'policies':
-          aiResponse = "This appears to be an HR/policy related matter. Please contact the Human Resources department directly for assistance with policies, leaves, or HR-related queries.";
-          break;
-        case 'salary':
-        case 'benefits':
-          aiResponse = "This is related to compensation or benefits. Please reach out to the HR or Finance department for salary slips, benefits enrollment, or compensation-related queries.";
-          break;
-        case 'personal':
-          aiResponse = "For personal or confidential matters, please contact HR directly or speak with your manager. They can provide appropriate guidance and support.";
-          break;
-        case 'interpersonal':
-          aiResponse = "For interpersonal issues or workplace conflicts, please contact HR or speak with your manager. They can help mediate and resolve such matters confidentially.";
-          break;
-        case 'career':
-          aiResponse = "For career growth and development queries, please contact HR or your manager. They can guide you on training opportunities and career advancement paths.";
-          break;
-        default:
-          aiResponse = "This appears to be a non-technical administrative matter. Please contact the relevant department (HR, Admin, or your manager) for assistance.";
-      }
+      const aiResponse = generatePersonalResponse(detectedPersonalCategory);
       
       return {
         category: `Personal/${detectedPersonalCategory}`,
@@ -229,49 +201,7 @@ const classifyIssueType = async (title, description) => {
       };
     }
     
-    // CASE 3: Mixed query - has both personal AND technical elements
-    if (hasPersonalIssue && hasTechnicalIssue) {
-      console.log("Handling: Mixed query (both personal and technical)");
-      
-      // Extract the technical parts for ticket creation
-      const technicalParts = [];
-      for (const keyword of technicalKeywords.slice(0, 20)) { // Check first 20 keywords
-        if (typeof keyword === 'string' && fullText.includes(keyword)) {
-          technicalParts.push(keyword);
-        }
-      }
-      
-      return {
-        category: "Mixed Query",
-        isTechnical: true, // Default to technical for ticket creation
-        shouldHandleByAI: false,
-        confidence: 0.7,
-        priority: "medium",
-        mixedQuery: true,
-        technicalParts: technicalParts,
-        personalCategory: detectedPersonalCategory,
-        aiResponse: "I see this contains both technical and non-technical elements. I'll create a ticket for the technical issue. For the personal/HR aspects, please contact the relevant department separately.",
-        reason: "Mixed personal and technical query",
-        useMainModel: true // Use main model for technical classification
-      };
-    }
-    
-    // CASE 4: Very short ambiguous queries
-    if (description.length < 15 && !hasTechnicalIssue && !isGreeting) {
-      console.log("Handling: Very short ambiguous query");
-      return {
-        category: "General",
-        isTechnical: false,
-        shouldHandleByAI: true,
-        confidence: 0.8,
-        priority: "low",
-        aiResponse: "Could you please provide more details about what you need help with? I can assist with technical issues or direct you to the right department for other matters.",
-        reason: "Very short ambiguous query",
-        useMainModel: false
-      };
-    }
-    
-    // CASE 5: Thank you messages
+    // CASE 3: Thank you messages
     if (/^thanks|thank you|thank you so much|appreciate it|great help/i.test(descriptionLower)) {
       console.log("Handling: Thank you message");
       return {
@@ -282,6 +212,21 @@ const classifyIssueType = async (title, description) => {
         priority: "low",
         aiResponse: "You're welcome! I'm glad I could help. If you have any other questions, feel free to ask.",
         reason: "Thank you message",
+        useMainModel: false
+      };
+    }
+    
+    // CASE 4: Very short ambiguous queries
+    if (description.length < 10 && !hasTechnicalIssue && !isGreeting) {
+      console.log("Handling: Very short ambiguous query");
+      return {
+        category: "General",
+        isTechnical: false,
+        shouldHandleByAI: true,
+        confidence: 0.8,
+        priority: "low",
+        aiResponse: "Could you please provide more details about what you need help with? I can assist with technical issues or direct you to the right department for other matters.",
+        reason: "Very short ambiguous query",
         useMainModel: false
       };
     }
@@ -361,13 +306,8 @@ const getTimeBasedGreeting = (greetingType = '') => {
   return greetings[Math.floor(Math.random() * greetings.length)];
 };
 
-// Enhanced AI response generation for personal issues
-const generateAIResponse = async (issue, isNonTechnical = false, category = '') => {
-  if (!isNonTechnical) {
-    return "I understand you're facing a technical issue. Let me help you create a support ticket for this.";
-  }
-  
-  // Generate specific responses based on category
+// Generate response for personal issues
+const generatePersonalResponse = (category) => {
   switch(category) {
     case 'hr':
     case 'policies':
@@ -396,6 +336,6 @@ const generateAIResponse = async (issue, isNonTechnical = false, category = '') 
 
 module.exports = {
   classifyIssueType,
-  generateAIResponse,
-  getTimeBasedGreeting
+  getTimeBasedGreeting,
+  generatePersonalResponse
 };
