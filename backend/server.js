@@ -204,13 +204,37 @@ app.post('/api/tickets/generate', async (req, res) => {
       });
     }
 
-    // Check for minimum length
-    if (description.length < 10) {
+    // Clean and normalize the description
+    const cleanedDescription = description.trim();
+    
+    // ========== UPDATED: BETTER GREETING DETECTION ==========
+    // Check for greetings and very short messages
+    const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening)|how\s*are\s*you|what'?s?\s*up|greetings|yo)$/i.test(cleanedDescription.toLowerCase());
+    
+    // Check for very short non-technical messages
+    const isTooShort = cleanedDescription.length < 15;
+    
+    // Check for empty or placeholder descriptions
+    const isPlaceholder = /^(description|enter description|type here|describe your issue)$/i.test(cleanedDescription.toLowerCase());
+    
+    if (isGreeting || isTooShort || isPlaceholder) {
       return res.status(400).json({
-        error: "Description too short",
-        message: "Please provide more details (at least 10 characters) for better assistance.",
+        error: "Description too vague",
+        message: "Please provide details about your technical issue.",
         type: "INSUFFICIENT_DETAILS",
-        suggestion: "Include specific error messages, steps to reproduce, and what you were trying to accomplish."
+        suggestion: "Example: 'My Outlook is not opening' or 'I cannot connect to the WiFi'",
+        isGreeting: isGreeting,
+        length: cleanedDescription.length
+      });
+    }
+
+    // Check for minimum meaningful content
+    const meaningfulWords = cleanedDescription.split(/\s+/).filter(word => word.length > 2).length;
+    if (meaningfulWords < 3) {
+      return res.status(400).json({
+        error: "Insufficient details",
+        message: "Please provide more specific details about your issue.",
+        suggestion: "Include: What you're trying to do, what error you're seeing, and what you've already tried."
       });
     }
 
@@ -227,20 +251,18 @@ app.post('/api/tickets/generate', async (req, res) => {
     }
 
     // Step 1: Enhanced AI Classification
-    const aiAnalysis = await classifyIssueType(title, description);
-console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
+    const aiAnalysis = await classifyIssueType(title, cleanedDescription);
+    console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
 
-    // ========== UPDATED LOGIC: ALWAYS CREATE TICKET FOR VALID QUERIES ==========
-    
-    // Check if it's just a greeting
-    const isJustGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|how are you|what's up)$/i.test(description.toLowerCase().trim());
-    
-    if (isJustGreeting || description.length < 15) {
+    // ========== IMPROVED: CHECK FOR NON-TECHNICAL CONTENT ==========
+    // If AI analysis says it's not technical AND not mixed query
+    if (aiAnalysis.isTechnical === false && !aiAnalysis.mixedQuery) {
       return res.status(400).json({
-        error: "Description too vague",
-        message: "Please provide details about your technical issue.",
-        type: "INSUFFICIENT_DETAILS",
-        suggestion: "Example: 'My Outlook is not opening' or 'I cannot connect to the WiFi'"
+        error: "Non-technical query",
+        message: "This appears to be a non-technical inquiry. Please contact HR or your manager for assistance.",
+        type: "NON_TECHNICAL",
+        suggestion: "For technical issues only: software, hardware, network, email, or system problems.",
+        aiResponse: aiAnalysis.aiResponse || "This query is not technical in nature."
       });
     }
 
@@ -248,34 +270,50 @@ console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
     let category = aiAnalysis.category || "General IT";
     let priority = aiAnalysis.priority || "medium";
     
-    // Override for non-technical queries - still create ticket but mark appropriately
-    if (aiAnalysis.isTechnical === false) {
-      category = "Non-Technical Query";
-      priority = "low";
-    }
-
-    // If it's a mixed query, use the technical parts for categorization
-    if (aiAnalysis.mixedQuery && aiAnalysis.technicalParts && aiAnalysis.technicalParts.length > 0) {
-      // Determine category based on technical parts
-      if (aiAnalysis.technicalParts.some(p => p.includes('email') || p.includes('outlook'))) {
-        category = "Email/Outlook";
-      } else if (aiAnalysis.technicalParts.some(p => p.includes('wifi') || p.includes('network'))) {
-        category = "Network";
+    // ========== FIXED: BETTER MIXED QUERY HANDLING ==========
+    if (aiAnalysis.mixedQuery) {
+      console.log("Mixed query detected - technical parts:", aiAnalysis.technicalParts);
+      
+      // If there are technical parts, proceed with ticket creation
+      if (aiAnalysis.technicalParts && aiAnalysis.technicalParts.length > 0) {
+        // Determine category based on technical parts
+        const techDesc = aiAnalysis.technicalParts.join(' ');
+        
+        if (techDesc.includes('email') || techDesc.includes('outlook')) {
+          category = "Email/Outlook";
+        } else if (techDesc.includes('wifi') || techDesc.includes('network')) {
+          category = "Network";
+        } else if (techDesc.includes('password') || techDesc.includes('login')) {
+          category = "Access/Login";
+        } else {
+          category = "General IT";
+        }
+        
+        // Update description to focus on technical parts
+        description = `Mixed query - Technical issue: ${techDesc}`;
       } else {
-        category = "Mixed Technical";
+        // No technical parts found
+        return res.status(400).json({
+          error: "No technical issue identified",
+          message: aiAnalysis.aiResponse || "Please describe a specific technical problem.",
+          type: "NO_TECHNICAL_ISSUE",
+          suggestion: "Example: 'My laptop won't turn on' or 'I can't access SharePoint'"
+        });
       }
     }
 
     // Get AI classification from your external service (for technical issues)
     let aiServiceResponse;
     let externalConfidence = null;
-    if (aiAnalysis.useMainModel !== false) {
+    
+    // Only call main AI model for technical issues
+    if (aiAnalysis.isTechnical !== false) {
       try {
         console.log("Calling main AI model at HF Space...");
         console.log("Calling AI service at https://rakshh12-ai-ticketing-engine.hf.space");
         aiServiceResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
           title,
-          description
+          description: cleanedDescription
         }, { 
           timeout: 30000,
           headers: {
@@ -285,29 +323,27 @@ console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
         
         console.log("AI Service Response:", aiServiceResponse.data);
         
-       // In your /api/tickets/generate endpoint, update this section:
-if (aiServiceResponse?.data) {
-    category = aiServiceResponse.data.category;
-    priority = aiServiceResponse.data.priority?.toLowerCase() || priority;
-    
-    // PROPERLY capture category confidence from AI service
-    externalConfidence = aiServiceResponse.data.category_confidence || 
-                         aiServiceResponse.data.confidence || 
-                         aiServiceResponse.data.score || 
-                         0.5;
-    
-    // Also capture priority confidence
-    const priorityConfidence = aiServiceResponse.data.priority_confidence || 
-                              aiServiceResponse.data.priority_score || 
-                              0.5;
-    
-    console.log(`Main model category confidence: ${externalConfidence}`);
-    console.log(`Main model priority confidence: ${priorityConfidence}`);
-}
-    } catch (aiError) {
+        if (aiServiceResponse?.data) {
+          category = aiServiceResponse.data.category;
+          priority = aiServiceResponse.data.priority?.toLowerCase() || priority;
+          
+          externalConfidence = aiServiceResponse.data.category_confidence || 
+                               aiServiceResponse.data.confidence || 
+                               aiServiceResponse.data.score || 
+                               0.5;
+          
+          const priorityConfidence = aiServiceResponse.data.priority_confidence || 
+                                    aiServiceResponse.data.priority_score || 
+                                    0.5;
+          
+          console.log(`Main model category confidence: ${externalConfidence}`);
+          console.log(`Main model priority confidence: ${priorityConfidence}`);
+        }
+      } catch (aiError) {
         console.error("Main AI model failed:", aiError.message);
+        // Continue with local classification
+      }
     }
-}
 
     // Create ticket
     const ticketData = {
@@ -319,9 +355,7 @@ if (aiServiceResponse?.data) {
       priority: priority,
       status: "open",
       category_confidence: externalConfidence || aiAnalysis.confidence || 0.5,
-  // Use priority_confidence from AI service if available
-  priority_confidence: aiServiceResponse?.data?.priority_confidence || 
-                      (aiServiceResponse?.data?.priority_score ? aiServiceResponse.data.priority_score : 0.5),
+      priority_confidence: aiServiceResponse?.data?.priority_confidence || 0.5,
       entities: aiServiceResponse?.data?.entities || { devices: [], usernames: [], error_codes: [] },
       aiAnalysis: aiAnalysis,
       handledByAI: false,
