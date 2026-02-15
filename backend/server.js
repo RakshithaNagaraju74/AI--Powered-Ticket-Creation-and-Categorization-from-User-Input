@@ -192,6 +192,8 @@ app.get('/api/cors-test', (req, res) => {
 // Update the ticket generation endpoint
 // --- TICKET GENERATION API ---
 // --- TICKET GENERATION API (FIXED VERSION) ---
+// --- TICKET GENERATION API (UPDATED VERSION) ---
+// --- TICKET GENERATION API (FIXED VERSION) ---
 app.post('/api/tickets/generate', async (req, res) => {
   try {
     console.log("Received ticket generation request:", req.body);
@@ -199,6 +201,7 @@ app.post('/api/tickets/generate', async (req, res) => {
     
     if (!title || !description || !userId) {
       return res.status(400).json({ 
+        success: false,
         error: "Title, description, and user ID are required",
         received: { title, description, userId }
       });
@@ -207,111 +210,51 @@ app.post('/api/tickets/generate', async (req, res) => {
     // Clean and normalize the description
     const cleanedDescription = description.trim();
     
-    // ========== UPDATED: BETTER GREETING DETECTION ==========
-    // Check for greetings and very short messages
-    const isGreeting = /^(hi|hello|hey|good\s*(morning|afternoon|evening)|how\s*are\s*you|what'?s?\s*up|greetings|yo)$/i.test(cleanedDescription.toLowerCase());
-    
-    // Check for very short non-technical messages
-    const isTooShort = cleanedDescription.length < 15;
-    
-    // Check for empty or placeholder descriptions
-    const isPlaceholder = /^(description|enter description|type here|describe your issue)$/i.test(cleanedDescription.toLowerCase());
-    
-    if (isGreeting || isTooShort || isPlaceholder) {
-      return res.status(400).json({
-        error: "Description too vague",
-        message: "Please provide details about your technical issue.",
-        type: "INSUFFICIENT_DETAILS",
-        suggestion: "Example: 'My Outlook is not opening' or 'I cannot connect to the WiFi'",
-        isGreeting: isGreeting,
-        length: cleanedDescription.length
-      });
-    }
-
-    // Check for minimum meaningful content
-    const meaningfulWords = cleanedDescription.split(/\s+/).filter(word => word.length > 2).length;
-    if (meaningfulWords < 3) {
-      return res.status(400).json({
-        error: "Insufficient details",
-        message: "Please provide more specific details about your issue.",
-        suggestion: "Include: What you're trying to do, what error you're seeing, and what you've already tried."
-      });
-    }
-
     // First, get user details
     let user;
     try {
       user = await User.findByPk(userId);
       if (!user) {
-        return res.status(404).json({ error: "User not found" });
+        return res.status(404).json({ 
+          success: false,
+          error: "User not found" 
+        });
       }
     } catch (userError) {
       console.error("User lookup error:", userError);
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Step 1: Enhanced AI Classification
-    const aiAnalysis = await classifyIssueType(title, cleanedDescription);
-    console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
-
-    // ========== IMPROVED: CHECK FOR NON-TECHNICAL CONTENT ==========
-    // If AI analysis says it's not technical AND not mixed query
-    if (aiAnalysis.isTechnical === false && !aiAnalysis.mixedQuery) {
-      return res.status(400).json({
-        error: "Non-technical query",
-        message: "This appears to be a non-technical inquiry. Please contact HR or your manager for assistance.",
-        type: "NON_TECHNICAL",
-        suggestion: "For technical issues only: software, hardware, network, email, or system problems.",
-        aiResponse: aiAnalysis.aiResponse || "This query is not technical in nature."
+      return res.status(404).json({ 
+        success: false,
+        error: "User not found" 
       });
     }
 
-    // Determine category based on AI analysis
-    let category = aiAnalysis.category || "General IT";
-    let priority = aiAnalysis.priority || "medium";
-    
-    // ========== FIXED: BETTER MIXED QUERY HANDLING ==========
-    if (aiAnalysis.mixedQuery) {
-      console.log("Mixed query detected - technical parts:", aiAnalysis.technicalParts);
-      
-      // If there are technical parts, proceed with ticket creation
-      if (aiAnalysis.technicalParts && aiAnalysis.technicalParts.length > 0) {
-        // Determine category based on technical parts
-        const techDesc = aiAnalysis.technicalParts.join(' ');
-        
-        if (techDesc.includes('email') || techDesc.includes('outlook')) {
-          category = "Email/Outlook";
-        } else if (techDesc.includes('wifi') || techDesc.includes('network')) {
-          category = "Network";
-        } else if (techDesc.includes('password') || techDesc.includes('login')) {
-          category = "Access/Login";
-        } else {
-          category = "General IT";
-        }
-        
-        // Update description to focus on technical parts
-        description = `Mixed query - Technical issue: ${techDesc}`;
-      } else {
-        // No technical parts found
-        return res.status(400).json({
-          error: "No technical issue identified",
-          message: aiAnalysis.aiResponse || "Please describe a specific technical problem.",
-          type: "NO_TECHNICAL_ISSUE",
-          suggestion: "Example: 'My laptop won't turn on' or 'I can't access SharePoint'"
-        });
-      }
+    // Step 1: Enhanced AI Classification with Groq
+    const aiAnalysis = await classifyIssueType(title, cleanedDescription);
+    console.log("AI Assistant Analysis:", JSON.stringify(aiAnalysis, null, 2));
+
+    // Step 2: Handle non-technical or irrelevant queries
+    if (aiAnalysis.isTechnical === false && !aiAnalysis.createTicket) {
+      // Don't create ticket, just return AI response
+      return res.status(200).json({
+        success: true,
+        ticketCreated: false,
+        message: "Query handled by AI assistant",
+        aiResponse: aiAnalysis.aiResponse,
+        category: aiAnalysis.category,
+        confidence: aiAnalysis.confidence,
+        type: aiAnalysis.reason || "non-technical"
+      });
     }
 
-    // Get AI classification from your external service (for technical issues)
-    let aiServiceResponse;
-    let externalConfidence = null;
+    // Step 3: Try to get classification from trained model (Hugging Face)
+    let trainedModelResponse = null;
+    let useTrainedModel = false;
     
-    // Only call main AI model for technical issues
-    if (aiAnalysis.isTechnical !== false) {
+    // Only call trained model if AI analysis suggests it's technical
+    if (aiAnalysis.isTechnical === true) {
       try {
-        console.log("Calling main AI model at HF Space...");
-        console.log("Calling AI service at https://rakshh12-ai-ticketing-engine.hf.space");
-        aiServiceResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
+        console.log("Calling trained model at HF Space...");
+        trainedModelResponse = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', {
           title,
           description: cleanedDescription
         }, { 
@@ -321,51 +264,65 @@ app.post('/api/tickets/generate', async (req, res) => {
           }
         });
         
-        console.log("AI Service Response:", aiServiceResponse.data);
+        console.log("Trained Model Response:", trainedModelResponse.data);
         
-        if (aiServiceResponse?.data) {
-          category = aiServiceResponse.data.category;
-          priority = aiServiceResponse.data.priority?.toLowerCase() || priority;
-          
-          externalConfidence = aiServiceResponse.data.category_confidence || 
-                               aiServiceResponse.data.confidence || 
-                               aiServiceResponse.data.score || 
-                               0.5;
-          
-          const priorityConfidence = aiServiceResponse.data.priority_confidence || 
-                                    aiServiceResponse.data.priority_score || 
-                                    0.5;
-          
-          console.log(`Main model category confidence: ${externalConfidence}`);
-          console.log(`Main model priority confidence: ${priorityConfidence}`);
+        // Check confidence from trained model
+        const trainedConfidence = trainedModelResponse.data.category_confidence || 
+                                 trainedModelResponse.data.confidence || 
+                                 trainedModelResponse.data.score || 0;
+        
+        if (trainedConfidence >= 0.5) {
+          useTrainedModel = true;
+          console.log(`✅ Trained model confidence ${trainedConfidence} >= 0.5 - using trained model`);
         }
       } catch (aiError) {
-        console.error("Main AI model failed:", aiError.message);
-        // Continue with local classification
+        console.error("Trained model failed:", aiError.message);
+        // Continue with Groq response
       }
     }
 
-    // Create ticket
+    // Step 4: Determine final response and category
+    let finalCategory = aiAnalysis.category;
+    let finalPriority = aiAnalysis.priority || "medium";
+    let finalAiResponse = aiAnalysis.aiResponse;
+    let finalConfidence = aiAnalysis.confidence;
+    let handledByAI = true;
+    
+    // If trained model had high confidence, use its data
+    if (useTrainedModel && trainedModelResponse?.data) {
+      finalCategory = trainedModelResponse.data.category || finalCategory;
+      finalPriority = trainedModelResponse.data.priority?.toLowerCase() || finalPriority;
+      finalConfidence = trainedModelResponse.data.category_confidence || 
+                       trainedModelResponse.data.confidence || 0.8;
+      handledByAI = false; // Not handled by AI, goes to agent
+      
+      // Generate AI response using Groq for this specific ticket
+      const groqResponse = await generateAIResponse({
+        title,
+        description: cleanedDescription,
+        category: finalCategory,
+        priority: finalPriority
+      });
+      finalAiResponse = groqResponse;
+    }
+
+    // Step 5: Create ticket for technical issues
     const ticketData = {
       title: title,
       description: description,
       userEmail: user.email,
       userId: userId,
-      category: category,
-      priority: priority,
+      category: finalCategory,
+      priority: finalPriority,
       status: "open",
-      category_confidence: externalConfidence || aiAnalysis.confidence || 0.5,
-      priority_confidence: aiServiceResponse?.data?.priority_confidence || 0.5,
-      entities: aiServiceResponse?.data?.entities || { devices: [], usernames: [], error_codes: [] },
+      category_confidence: finalConfidence,
+      priority_confidence: trainedModelResponse?.data?.priority_confidence || 0.5,
+      entities: trainedModelResponse?.data?.entities || { devices: [], usernames: [], error_codes: [] },
       aiAnalysis: aiAnalysis,
-      handledByAI: false,
-      mixedQuery: aiAnalysis.mixedQuery || false
+      handledByAI: handledByAI,
+      aiResponse: finalAiResponse,
+      needsClarification: aiAnalysis.needsClarification || false
     };
-
-    // Store AI response if available
-    if (aiAnalysis.aiResponse) {
-      ticketData.aiResponse = aiAnalysis.aiResponse;
-    }
 
     console.log("Creating ticket with data:", ticketData);
 
@@ -382,7 +339,8 @@ app.post('/api/tickets/generate', async (req, res) => {
         ticketId: ticket.id,
         title: title,
         category: ticket.category,
-        priority: ticket.priority
+        priority: ticket.priority,
+        aiResponse: finalAiResponse
       },
       read: false
     });
@@ -398,28 +356,24 @@ app.post('/api/tickets/generate', async (req, res) => {
     
     console.log("Ticket created successfully:", ticket.id);
     
-    // Return response based on query type
-    const response = {
+    // Return response with ticket
+    res.json({
       success: true,
+      ticketCreated: true,
+      message: "Ticket created successfully",
       ticket: ticket,
-      message: "Ticket created successfully"
-    };
-    
-    // Add AI response for mixed queries
-    if (aiAnalysis.mixedQuery && aiAnalysis.aiResponse) {
-      response.aiResponse = aiAnalysis.aiResponse;
-      response.message = "Ticket created for technical issue. Additional guidance provided above.";
-    }
-    
-    res.json(response);
+      aiResponse: finalAiResponse,
+      confidence: finalConfidence,
+      handledByAI: handledByAI
+    });
     
   } catch (err) {
     console.error('Ticket creation failed:', err);
     console.error('Error stack:', err.stack);
     res.status(500).json({ 
+      success: false,
       error: "Ticket creation failed", 
-      details: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      details: err.message
     });
   }
 });
@@ -1924,28 +1878,53 @@ app.get('/api/debug/archive-status', async (req, res) => {
   }
 });
 // --- HEALTH CHECK API ---
+// --- HEALTH CHECK API ---
 app.get('/api/health', async (req, res) => {
   try {
     // Test database connection
     await sequelize.authenticate();
     
-    // Try to connect to AI service
+    // Try to connect to AI service with a shorter timeout and better error handling
     let aiHealth;
     try {
-      const response = await axios.get('https://rakshh12-ai-ticketing-engine.hf.space/health', { 
-        timeout: 5000 
+      // Use a simple GET request to check if the service is reachable
+      const response = await axios.get('https://rakshh12-ai-ticketing-engine.hf.space/', { 
+        timeout: 3000, // Shorter timeout
+        validateStatus: false // Don't throw on any status code
       });
+      
       aiHealth = {
-        status: 'healthy',
-        message: response.data?.status || 'AI service responding',
-        details: response.data
+        status: response.status === 200 ? 'healthy' : 'degraded',
+        message: `AI service responded with status ${response.status}`,
+        details: {
+          statusCode: response.status,
+          statusText: response.statusText
+        }
       };
     } catch (aiError) {
-      aiHealth = {
-        status: 'unhealthy',
-        error: aiError.message,
-        details: aiError.response?.data || 'No response from AI service'
-      };
+      console.error('AI service health check failed:', aiError.message);
+      
+      // Check if it's a timeout or connection error
+      if (aiError.code === 'ECONNABORTED') {
+        aiHealth = {
+          status: 'timeout',
+          message: 'AI service is timing out (may be waking up from sleep)',
+          error: aiError.message
+        };
+      } else if (aiError.code === 'ENOTFOUND') {
+        aiHealth = {
+          status: 'unreachable',
+          message: 'AI service host is unreachable',
+          error: aiError.message
+        };
+      } else {
+        aiHealth = {
+          status: 'unhealthy',
+          message: 'AI service is not responding',
+          error: aiError.message,
+          details: aiError.response?.data || 'No response from AI service'
+        };
+      }
     }
     
     res.json({
@@ -1964,7 +1943,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// --- TEST AI CONNECTION API ---
+// --- TEST AI CONNECTION API (Improved) ---
 app.get('/api/test-ai', async (req, res) => {
   try {
     const testData = {
@@ -1974,8 +1953,20 @@ app.get('/api/test-ai', async (req, res) => {
     
     console.log("Testing AI connection with data:", testData);
     
+    // First check if the service is reachable
+    try {
+      const healthCheck = await axios.get('https://rakshh12-ai-ticketing-engine.hf.space/', { 
+        timeout: 5000,
+        validateStatus: false
+      });
+      console.log('AI service base URL responded with status:', healthCheck.status);
+    } catch (baseError) {
+      console.log('AI service base URL not reachable:', baseError.message);
+    }
+    
+    // Try the classification endpoint
     const response = await axios.post('https://rakshh12-ai-ticketing-engine.hf.space/classify', testData, { 
-      timeout: 10000,
+      timeout: 15000, // Longer timeout for classification
       headers: {
         'Content-Type': 'application/json'
       }
@@ -1992,12 +1983,25 @@ app.get('/api/test-ai', async (req, res) => {
     console.error("AI test failed:", error.message);
     console.error("Error details:", error.response?.data || error);
     
+    // Provide more helpful error message
+    let suggestion = "Make sure the AI service is running on https://rakshh12-ai-ticketing-engine.hf.space";
+    let status = "error";
+    
+    if (error.code === 'ECONNABORTED') {
+      status = "timeout";
+      suggestion = "AI service is taking too long to respond. It might be waking up from sleep mode.";
+    } else if (error.code === 'ENOTFOUND') {
+      status = "unreachable";
+      suggestion = "The AI service hostname could not be resolved. Check if the service URL is correct.";
+    }
+    
     res.status(500).json({
       success: false,
+      status: status,
       message: "AI service connection failed",
       error: error.message,
       details: error.response?.data || 'No response from AI service',
-      suggestion: "Make sure the AI service is running on https://rakshh12-ai-ticketing-engine.hf.space",
+      suggestion: suggestion,
       timestamp: new Date().toISOString()
     });
   }

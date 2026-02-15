@@ -45,22 +45,27 @@ const decodeToken = (token) => {
 };
 
 const getStatusStyles = (ticket) => {
-  if (!ticket) return { background: '#f1f5f9', color: '#64748b', label: 'UNKNOWN' };
+  if (!ticket || !ticket.status) return { background: '#f1f5f9', color: '#64748b', label: 'UNKNOWN' };
   
   if (ticket.status === 'resolved' || ticket.status === 'closed') {
     return { background: '#f0fdf4', color: '#15803d', label: 'RESOLVED' };
   }
 
-  const createdDate = new Date(ticket.created_at || ticket.createdAt || Date.now());
-  const now = new Date();
-  const diffInHours = (now - createdDate) / (1000 * 60 * 60);
+  // Only try to parse date if ticket exists
+  try {
+    const createdDate = new Date(ticket.created_at || ticket.createdAt || Date.now());
+    const now = new Date();
+    const diffInHours = (now - createdDate) / (1000 * 60 * 60);
 
-  if (diffInHours < 3) {
-    return { background: '#dcfce7', color: '#166534', label: 'NEW' };
-  } else if (diffInHours >= 3 && diffInHours < 6) {
-    return { background: '#fef3c7', color: '#92400e', label: 'PENDING' };
-  } else {
-    return { background: '#fee2e2', color: '#991b1b', label: 'OVERDUE' };
+    if (diffInHours < 3) {
+      return { background: '#dcfce7', color: '#166534', label: 'NEW' };
+    } else if (diffInHours >= 3 && diffInHours < 6) {
+      return { background: '#fef3c7', color: '#92400e', label: 'PENDING' };
+    } else {
+      return { background: '#fee2e2', color: '#991b1b', label: 'OVERDUE' };
+    }
+  } catch (error) {
+    return { background: '#f1f5f9', color: '#64748b', label: 'UNKNOWN' };
   }
 };
 
@@ -1255,10 +1260,12 @@ const CategoryDistribution = ({ theme, tickets }) => {
 };
 
 // Enhanced Ticket Card
+// Enhanced Ticket Card - FIXED VERSION
 const EnhancedTicketCard = ({ ticket, theme, onViewDetails, onGiveFeedback }) => {
   const ticketId = ticket._id || ticket.id || 'N/A';
   const displayTicketId = ticketId.length > 8 ? `#${ticketId.slice(-8).toUpperCase()}` : `#${ticketId}`;
-  const statusStyles = getStatusStyles(ticket.status);
+  const statusStyles = getStatusStyles(ticket); // FIXED: Pass ticket object, not ticket.status
+  
   return (
     <div style={{
       background: 'white',
@@ -2458,7 +2465,7 @@ const [aiResponse, setAiResponse] = useState(null);
 
   // Initialize Socket.io connection
   // Initialize Socket.io connection
-// In your UserDashboard.jsx component, update the Socket.io connection:
+
 useEffect(() => {
   // Determine the WebSocket URL based on environment
   const WS_BASE_URL = API_BASE_URL.replace('/api', ''); // Remove /api for WebSocket
@@ -2560,27 +2567,39 @@ useEffect(() => {
   }, []);
 
   // Check AI service status
-  useEffect(() => {
-    const checkAIStatus = async () => {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/health`, { timeout: 5000 });
-        if (response.data.ai_service?.status === 'healthy') {
+  // Check AI service status - improved version
+useEffect(() => {
+  const checkAIStatus = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/health`, { timeout: 8000 });
+      
+      // Check the ai_service status from the response
+      if (response.data.ai_service) {
+        if (response.data.ai_service.status === 'healthy') {
           setAiStatus('connected');
           addLog("AI Service: Connected and Ready");
+        } else if (response.data.ai_service.status === 'timeout') {
+          setAiStatus('slow');
+          addLog("AI Service: Responding slowly (may be waking up)");
         } else {
           setAiStatus('disconnected');
-          addLog("AI Service: Disconnected - Using fallback");
+          addLog("AI Service: Disconnected - Using fallback mode");
         }
-      } catch (error) {
-        setAiStatus('error');
-        addLog("AI Service: Connection Error");
+      } else {
+        setAiStatus('disconnected');
+        addLog("AI Service: Status unknown - Using fallback");
       }
-    };
+    } catch (error) {
+      setAiStatus('error');
+      addLog("AI Service: Connection Error - Check if backend is running");
+      console.error("Health check error:", error.message);
+    }
+  };
 
-    checkAIStatus();
-    const aiInterval = setInterval(checkAIStatus, 30000);
-    return () => clearInterval(aiInterval);
-  }, []);
+  checkAIStatus();
+  const aiInterval = setInterval(checkAIStatus, 60000); // Check every minute instead of 30 seconds
+  return () => clearInterval(aiInterval);
+}, []);
 
   // Fetch notifications from backend
   const fetchNotifications = async () => {
@@ -2840,10 +2859,9 @@ useEffect(() => {
     });
 
     // ========== GROQ AI HANDLING ==========
-    // Check if AI handled it directly
-    if (res.data.type === "AI_RESPONSE") {
+    // Check if AI handled it directly (no ticket created)
+    if (res.data.type === "AI_RESPONSE" || (res.data.aiResponse && !res.data.ticketCreated)) {
       setAiResponse({
-        ticket: res.data.ticket,
         response: res.data.aiResponse,
         type: "AI_RESPONSE"
       });
@@ -2854,9 +2872,9 @@ useEffect(() => {
     }
     
     // Check if needs clarification
-    if (res.data.type === "NEEDS_CLARIFICATION") {
+    if (res.data.type === "NEEDS_CLARIFICATION" || res.data.needsClarification) {
       setAiResponse({
-        suggestion: res.data.aiSuggestion,
+        suggestion: res.data.aiSuggestion || res.data.aiResponse,
         requiredDetails: res.data.requiredDetails,
         type: "NEEDS_CLARIFICATION"
       });
@@ -2866,35 +2884,48 @@ useEffect(() => {
     }
     // =======================================
 
-    // Normal ticket creation
-    addLog("SUCCESS: Prediction Synchronized.");
+    // Check if a ticket was actually created
+    if (res.data.ticketCreated && res.data.ticket) {
+      // Normal ticket creation - ensure we have a ticket object
+      addLog("SUCCESS: Ticket created successfully.");
+      
+      // ENSURE PROPER DATE FORMATTING FOR NEW TICKET
+      const newTicket = {
+        ...res.data.ticket,
+        // Ensure created_at is properly formatted
+        created_at: res.data.ticket.created_at || new Date().toISOString(),
+        createdAt: res.data.ticket.createdAt || new Date().toISOString(),
+        // Ensure other required properties
+        category: res.data.ticket.category || "General",
+        priority: res.data.ticket.priority || "medium",
+        status: res.data.ticket.status || "open"
+      };
+      
+      setLastResult(newTicket);
+      
+      // Add new ticket to beginning of tickets array with proper formatting
+      setTickets(prev => [newTicket, ...prev]);
+      
+      setIssue({ title: '', description: '' });
+      
+      // Refresh tickets to ensure data consistency
+      setTimeout(() => {
+        fetchTickets();
+      }, 1000);
+      
+      alert('Ticket created successfully with AI classification!');
+    } else {
+      // Handle case where response doesn't indicate ticket creation but also isn't AI response
+      console.log("Response without ticket:", res.data);
+      setAiResponse({
+        response: res.data.aiResponse || "Your query has been processed.",
+        type: "AI_RESPONSE"
+      });
+      setShowAIResponse(true);
+    }
     
-    // ENSURE PROPER DATE FORMATTING FOR NEW TICKET
-    const newTicket = {
-      ...res.data.ticket,
-      // Ensure created_at is properly formatted
-      created_at: res.data.ticket.created_at || new Date().toISOString(),
-      createdAt: res.data.ticket.createdAt || new Date().toISOString(),
-      // Ensure other required properties
-      category: res.data.ticket.category || "General",
-      priority: res.data.ticket.priority || "medium",
-      status: res.data.ticket.status || "open"
-    };
-    
-    setLastResult(newTicket);
-    
-    // Add new ticket to beginning of tickets array with proper formatting
-    setTickets(prev => [newTicket, ...prev]);
-    
-    setIssue({ title: '', description: '' });
     setIsProcessing(false);
     
-    // Refresh tickets to ensure data consistency
-    setTimeout(() => {
-      fetchTickets();
-    }, 1000);
-    
-    alert('Ticket created successfully with AI classification!');
   } catch (err) {
     console.error("Ticket creation error:", err.response?.data || err.message);
     
@@ -3308,27 +3339,40 @@ useEffect(() => {
                 </p>
               </div>
             </div>
-            <div style={{ 
-              background: aiStatus === 'connected' ? '#10b98115' : aiStatus === 'error' ? '#fee2e2' : '#fef3c7',
-              color: aiStatus === 'connected' ? '#10b981' : aiStatus === 'error' ? '#dc2626' : '#d97706',
-              padding: '6px 12px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '700',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              border: `1px solid ${aiStatus === 'connected' ? '#a7f3d0' : aiStatus === 'error' ? '#fecaca' : '#fde68a'}`
-            }}>
-              <div style={{ 
-                width: '6px', 
-                height: '6px', 
-                borderRadius: '50%', 
-                background: aiStatus === 'connected' ? '#10b981' : aiStatus === 'error' ? '#dc2626' : '#d97706',
-                animation: aiStatus === 'connected' ? 'pulse 2s infinite' : 'none'
-              }} />
-              AI: {aiStatus === 'connected' ? 'Connected 🟢' : aiStatus === 'error' ? 'Error 🔴' : 'Checking... 🟡'}
-            </div>
+            
+<div style={{ 
+  background: aiStatus === 'connected' ? '#10b98115' : 
+             aiStatus === 'slow' ? '#fef3c7' :
+             aiStatus === 'error' ? '#fee2e2' : '#f1f5f9',
+  color: aiStatus === 'connected' ? '#10b981' : 
+         aiStatus === 'slow' ? '#d97706' :
+         aiStatus === 'error' ? '#dc2626' : '#64748b',
+  padding: '6px 12px',
+  borderRadius: '20px',
+  fontSize: '12px',
+  fontWeight: '700',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+  border: `1px solid ${
+    aiStatus === 'connected' ? '#a7f3d0' : 
+    aiStatus === 'slow' ? '#fde68a' :
+    aiStatus === 'error' ? '#fecaca' : '#e2e8f0'
+  }`
+}}>
+  <div style={{ 
+    width: '6px', 
+    height: '6px', 
+    borderRadius: '50%', 
+    background: aiStatus === 'connected' ? '#10b981' : 
+               aiStatus === 'slow' ? '#d97706' :
+               aiStatus === 'error' ? '#dc2626' : '#94a3b8',
+    animation: aiStatus === 'connected' ? 'pulse 2s infinite' : 'none'
+  }} />
+  AI: {aiStatus === 'connected' ? 'Connected 🟢' : 
+       aiStatus === 'slow' ? 'Starting... 🟡' :
+       aiStatus === 'error' ? 'Error 🔴' : 'Disconnected ⚪'}
+</div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <NotificationBell 

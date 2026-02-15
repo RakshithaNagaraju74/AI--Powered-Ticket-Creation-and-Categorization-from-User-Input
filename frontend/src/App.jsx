@@ -3,6 +3,7 @@ import Auth from './pages/Auth';
 import UserDashboard from './pages/UserDashboard';
 import DevAuth from './pages/DevAuth';
 import DevDashboard from './pages/DevDashboard';
+import KnowledgeBase from './pages/KnowledgeBase';
 import Landing from './pages/Landing';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
         <Route path="/dev-auth" element={<DevAuth />} />
         {/* ADD THIS ROUTE TO FIX THE 404 WARNING */}
         <Route path="/user-dashboard" element={<UserDashboard />} /> 
+        <Route path="/knowledge-base" element={<KnowledgeBase />} />
         <Route path="/dev-dashboard" element={<DevDashboard />} />
       </Routes>
     </Router>

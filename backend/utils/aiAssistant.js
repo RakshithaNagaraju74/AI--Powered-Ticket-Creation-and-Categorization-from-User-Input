@@ -1,6 +1,6 @@
-// utils/aiAssistant.js - ENHANCED VERSION
-// AI assistant handles greetings and personal/HR issues intelligently
-// Technical queries go to main model
+// utils/aiAssistant.js - AI-POWERED VERSION
+// Uses Groq for intelligent classification and response generation
+// Trained model used only for high-confidence technical issues
 
 const Groq = require('groq-sdk');
 
@@ -10,332 +10,401 @@ const groq = new Groq({
 
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
 
-// utils/aiAssistant.js - UPDATED VERSION
-// This handles greetings and personal issues BEFORE sending to main AI model
-
+/**
+ * Main classification function - uses Groq for intelligent analysis
+ * Determines if query is technical, personal, greeting, or irrelevant
+ * Returns structured response with confidence scores
+ */
 const classifyIssueType = async (title, description) => {
   try {
-    console.log(`\n=== CLASSIFYING: "${title}" ===`);
+    console.log(`\n=== AI CLASSIFYING: "${title}" ===`);
     console.log(`Description: ${description.substring(0, 100)}...`);
     
-    const descriptionLower = description.toLowerCase().trim();
-    const titleLower = title.toLowerCase().trim();
-    const fullText = titleLower + ' ' + descriptionLower;
+    const fullText = `${title}\n${description}`.trim();
     
-    // 1. Enhanced greeting detection with context
-    const greetingPatterns = [
-      /^hi\b.*/i, /^hello\b.*/i, /^hey\b.*/i, /^yo\b.*/i,
-      /^good\s+(morning|afternoon|evening|night)\b.*/i,
-      /^how\s+(are\s+you|is\s+it\s+going|are\s+things)\b.*/i,
-      /^what's?\s+up\b.*/i, /^howdy\b.*/i, /^greetings\b.*/i,
-      /^(thanks|thank\s+you)\b.*/i, /^good\s+to\s+see\s+you\b.*/i
-    ];
-    
-    // Check if it's primarily a greeting
-    let isGreeting = false;
-    let greetingType = '';
-    
-    for (const pattern of greetingPatterns) {
-      if (pattern.test(descriptionLower)) {
-        isGreeting = true;
-        if (/good morning/i.test(descriptionLower)) greetingType = 'morning';
-        else if (/good afternoon/i.test(descriptionLower)) greetingType = 'afternoon';
-        else if (/good evening/i.test(descriptionLower)) greetingType = 'evening';
-        else if (/good night/i.test(descriptionLower)) greetingType = 'night';
-        else if (/thank/i.test(descriptionLower)) greetingType = 'thanks';
-        break;
-      }
-    }
-    
-    // 2. Comprehensive personal/HR issue detection
-    const personalIssueKeywords = {
-      // HR & Policies
-      hr: ['hr department', 'human resources', 'hr policy', 'hr issue', 'hr team'],
-      policies: ['vacation policy', 'leave policy', 'sick leave', 'maternity leave', 
-                 'paternity leave', 'bereavement leave', 'company policy', 'work policy',
-                 'attendance policy', 'late policy', 'absence policy', 'remote work policy',
-                 'hybrid policy', 'dress code', 'code of conduct', 'work policy'],
-      
-      // Compensation & Benefits
-      salary: ['salary slip', 'pay slip', 'salary query', 'paycheck', 'salary issue',
-               'bonus', 'increment', 'raise', 'promotion', 'appraisal', 'performance review',
-               'overtime pay', 'late payment', 'salary query'],
-      benefits: ['health insurance', 'medical insurance', 'dental insurance', 'vision insurance',
-                 '401k', 'retirement plan', 'provident fund', 'employee benefits', 'perks',
-                 'allowance', 'travel allowance', 'food allowance', 'housing allowance'],
-      
-      // Administrative
-      admin: ['stationery', 'office supplies', 'furniture', 'chair', 'desk', 'cabinet',
-              'locker', 'keys', 'access card', 'id card', 'badge', 'visitor pass',
-              'parking', 'parking spot', 'cafeteria', 'food', 'snacks'],
-      
-      // Personal Issues
-      personal: ['personal issue', 'family issue', 'health issue', 'medical emergency',
-                 'doctor appointment', 'hospital', 'sick', 'unwell', 'stress', 'anxiety',
-                 'mental health', 'counseling', 'therapy', 'personal matter', 'private issue',
-                 'confidential matter', 'sensitive issue'],
-      
-      // Interpersonal Issues
-      interpersonal: ['colleague issue', 'team conflict', 'manager issue', 'boss problem',
-                      'harassment', 'bullying', 'discrimination', 'unfair treatment',
-                      'behavior issue', 'conduct issue', 'complaint', 'grievance',
-                      'workplace conflict', 'argument', 'dispute', 'misunderstanding'],
-      
-      // Career & Development
-      career: ['career growth', 'promotion process', 'advancement', 'next role',
-               'skills development', 'training', 'certification', 'course', 'workshop',
-               'conference', 'seminar', 'learning opportunity', 'mentorship'],
-      
-      // Work Environment
-      environment: ['office temperature', 'ac issue', 'heating', 'lighting', 'noise',
-                    'cleanliness', 'hygiene', 'safety', 'security', 'ergonomics',
-                    'workstation setup', 'chair comfort', 'desk height'],
-      
-      // Events & Celebrations
-      events: ['office party', 'team lunch', 'birthday celebration', 'festival',
-               'holiday party', 'company event', 'team building', 'outing', 'picnic',
-               'anniversary', 'retirement party', 'farewell'],
-      
-      // Travel & Expenses
-      travel: ['travel request', 'business trip', 'flight booking', 'hotel booking',
-               'car rental', 'per diem', 'travel expenses', 'expense claim',
-               'reimbursement', 'advance payment', 'travel policy'],
-    };
-    
-    // Check for technical keywords that should NOT be handled by AI
-    const technicalKeywords = [
-      // Hardware
-      'computer', 'laptop', 'desktop', 'monitor', 'printer', 'scanner', 'keyboard', 
-      'mouse', 'server', 'router', 'switch', 'firewall', 'nas', 'storage',
-      
-      // Software
-      'outlook', 'email', 'microsoft', 'office', 'windows', 'macos', 'linux',
-      'software', 'application', 'app', 'program', 'system', 'database',
-      
-      // Network
-      'wifi', 'network', 'internet', 'vpn', 'lan', 'wan', 'ip address', 'dns',
-      'firewall', 'proxy', 'bandwidth', 'connectivity',
-      
-      // Technical Issues
-      'error', 'crash', 'freeze', 'hang', 'slow', 'performance', 'bug', 'glitch',
-      'not working', 'broken', 'failed', 'down', 'offline', 'unavailable',
-      
-      // IT Actions
-      'install', 'uninstall', 'update', 'upgrade', 'patch', 'configure', 'setup',
-      'troubleshoot', 'diagnose', 'fix', 'repair', 'restore', 'backup', 'recovery',
-      
-      // Security
-      'password', 'login', 'authentication', 'authorization', 'access', 'permission',
-      'security', 'virus', 'malware', 'ransomware', 'phishing', 'hack', 'breach',
-      
-      // Development
-      'code', 'programming', 'development', 'api', 'integration', 'deployment',
-      'testing', 'debug', 'compile', 'build', 'deploy', 'git', 'repository',
-    ];
-    
-    // Analyze the query
-    let hasTechnicalIssue = false;
-    let hasPersonalIssue = false;
-    let detectedPersonalCategory = '';
-    
-    // Check for technical keywords
-    for (const keyword of technicalKeywords) {
-      if (fullText.includes(keyword)) {
-        hasTechnicalIssue = true;
-        console.log(`Found technical keyword: ${keyword}`);
-        break;
-      }
-    }
-    
-    // Check for personal/HR keywords
-    for (const [category, keywords] of Object.entries(personalIssueKeywords)) {
-      for (const keyword of keywords) {
-        if (fullText.includes(keyword)) {
-          hasPersonalIssue = true;
-          detectedPersonalCategory = category;
-          console.log(`Found personal/HR keyword (${category}): ${keyword}`);
-          break;
+    // Use Groq to analyze the query intelligently
+    const prompt = `
+You are an intelligent IT support ticket classifier. Analyze this user query and determine:
+
+1. Is this a technical issue? (true/false)
+2. Category: Choose one [Hardware, Software, Network, Email, Access/Login, Database, Security, Other Technical, HR/Personal, General Inquiry, Greeting, Thank You, Feedback]
+3. Priority: [critical, high, medium, low]
+4. Confidence score: 0.0 to 1.0 (how confident are you in this classification)
+5. Should we create a ticket? (true for technical issues, false for greetings/HR/non-technical)
+6. Does this need clarification? (true if query is too vague/ambiguous)
+7. Generate a helpful AI response for the user
+8. Extract any technical parts from mixed queries
+
+User Query:
+Title: ${title}
+Description: ${description}
+
+Return a JSON object with these exact fields:
+{
+  "isTechnical": boolean,
+  "category": string,
+  "priority": string,
+  "confidence": number (0.0-1.0),
+  "createTicket": boolean,
+  "needsClarification": boolean,
+  "aiResponse": string (friendly, helpful response),
+  "technicalParts": array of strings (if mixed query),
+  "reason": string (brief explanation),
+  "useTrainedModel": boolean (true if technical and confidence < 0.5)
+}
+
+Rules:
+- For greetings: isTechnical=false, createTicket=false, confidence=0.95, aiResponse=appropriate greeting
+- For HR/personal: isTechnical=false, createTicket=false, confidence=0.9, aiResponse=direct to HR
+- For vague queries: needsClarification=true, aiResponse=ask for more details
+- For technical issues: isTechnical=true, createTicket=true
+- For mixed queries: extract technicalParts and set isTechnical=true
+- If confidence < 0.5 AND isTechnical=true, set useTrainedModel=true
+
+Be intelligent and helpful in your responses.
+`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are an intelligent IT support assistant that classifies queries and provides helpful responses. Always return valid JSON."
+        },
+        {
+          role: "user",
+          content: prompt
         }
-      }
-      if (hasPersonalIssue) break;
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.3,
+      max_tokens: 1000,
+      response_format: { type: "json_object" }
+    });
+
+    const response = completion.choices[0]?.message?.content;
+    console.log("Groq Classification Response:", response);
+
+    let classification;
+    try {
+      classification = JSON.parse(response);
+    } catch (parseError) {
+      console.error("Failed to parse Groq response:", parseError);
+      // Fallback to default classification
+      classification = getDefaultClassification(title, description);
     }
+
+    // Validate and sanitize response
+    classification = sanitizeClassification(classification, title, description);
     
-    console.log(`Analysis: isGreeting=${isGreeting}, hasTechnicalIssue=${hasTechnicalIssue}, hasPersonalIssue=${hasPersonalIssue}`);
-    
-    // DECISION LOGIC
-    
-    // CASE 1: Pure greetings with NO technical content
-    if (isGreeting && !hasTechnicalIssue && description.length < 50) {
-      const timeBasedGreeting = getTimeBasedGreeting(greetingType);
-      console.log("Handling: Pure greeting");
-      return {
-        category: "Greeting",
-        isTechnical: false,
-        shouldHandleByAI: true,
-        confidence: 0.95,
-        priority: "low",
-        aiResponse: timeBasedGreeting,
-        reason: "Pure greeting without technical content",
-        useMainModel: false,
-        greetingType: greetingType
-      };
-    }
-    
-    // CASE 2: Personal/HR issues WITHOUT technical components
-    if (hasPersonalIssue && !hasTechnicalIssue) {
-      console.log(`Handling: Personal/HR issue (${detectedPersonalCategory})`);
-      
-      // Generate appropriate response based on category
-      const aiResponse = generatePersonalResponse(detectedPersonalCategory);
-      
-      return {
-        category: `Personal/${detectedPersonalCategory}`,
-        isTechnical: false,
-        shouldHandleByAI: true,
-        confidence: 0.9,
-        priority: "low",
-        aiResponse: aiResponse,
-        reason: `Personal/HR issue detected: ${detectedPersonalCategory}`,
-        useMainModel: false,
-        personalCategory: detectedPersonalCategory
-      };
-    }
-    
-    // CASE 3: Thank you messages
-    if (/^thanks|thank you|thank you so much|appreciate it|great help/i.test(descriptionLower)) {
-      console.log("Handling: Thank you message");
-      return {
-        category: "Feedback",
-        isTechnical: false,
-        shouldHandleByAI: true,
-        confidence: 0.9,
-        priority: "low",
-        aiResponse: "You're welcome! I'm glad I could help. If you have any other questions, feel free to ask.",
-        reason: "Thank you message",
-        useMainModel: false
-      };
-    }
-    
-    // CASE 4: Very short ambiguous queries
-    if (description.length < 10 && !hasTechnicalIssue && !isGreeting) {
-      console.log("Handling: Very short ambiguous query");
-      return {
-        category: "General",
-        isTechnical: false,
-        shouldHandleByAI: true,
-        confidence: 0.8,
-        priority: "low",
-        aiResponse: "Could you please provide more details about what you need help with? I can assist with technical issues or direct you to the right department for other matters.",
-        reason: "Very short ambiguous query",
-        useMainModel: false
-      };
-    }
-    
-    // EVERYTHING ELSE: Technical or unclear - send to main AI model
-    console.log("Sending to main AI model: Technical or unclear query");
-    return {
-      category: "General IT",
-      isTechnical: true,
-      shouldHandleByAI: false,
-      confidence: 0.5,
-      priority: "medium",
-      reason: "Technical or ambiguous query - using main model",
-      useMainModel: true
-    };
-    
+    console.log("Final Classification:", JSON.stringify(classification, null, 2));
+    return classification;
+
   } catch (error) {
-    console.error("Error in classifyIssueType:", error);
-    return {
-      category: "General IT Support",
-      isTechnical: true,
-      shouldHandleByAI: false,
-      confidence: 0.5,
-      priority: "medium",
-      reason: "Error - defaulting to main model",
-      useMainModel: true
-    };
+    console.error("Error in AI classification:", error);
+    // Return intelligent fallback using Groq directly
+    return await fallbackAIAnalysis(title, description);
   }
 };
 
-// Helper function for time-based greetings
-const getTimeBasedGreeting = (greetingType = '') => {
-  const hour = new Date().getHours();
-  let timeOfDay = '';
-  
-  if (greetingType) {
-    timeOfDay = greetingType;
-  } else if (hour < 12) {
-    timeOfDay = 'morning';
-  } else if (hour < 17) {
-    timeOfDay = 'afternoon';
-  } else if (hour < 21) {
-    timeOfDay = 'evening';
-  } else {
-    timeOfDay = 'night';
+/**
+ * Generate AI response for low confidence or ambiguous queries
+ */
+const generateAIResponse = async (ticketData) => {
+  try {
+    const { title, description, category, priority } = ticketData;
+    
+    const prompt = `
+You are an intelligent IT support assistant. Generate a helpful response for this ticket:
+
+Ticket Details:
+Title: ${title}
+Description: ${description}
+Category: ${category || 'General IT'}
+Priority: ${priority || 'medium'}
+
+Provide:
+1. Acknowledgment of the issue
+2. Initial troubleshooting steps (if applicable)
+3. What the user can expect next
+4. Any relevant information or resources
+
+Keep the response friendly, professional, and helpful. Max 200 words.
+`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful IT support assistant. Provide clear, actionable responses."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.5,
+      max_tokens: 500
+    });
+
+    return completion.choices[0]?.message?.content || 
+           "Thank you for your ticket. Our support team will review it and get back to you soon.";
+
+  } catch (error) {
+    console.error("Error generating AI response:", error);
+    return "Thank you for your ticket. Our support team will review it and get back to you soon.";
   }
+};
+
+/**
+ * Handle greeting messages intelligently
+ */
+const handleGreeting = async (text) => {
+  try {
+    const prompt = `
+The user sent this greeting/message: "${text}"
+
+Generate a friendly, appropriate response that:
+- Acknowledges their greeting
+- Offers help with technical issues
+- Directs them to appropriate resources if not technical
+
+Return JSON with:
+{
+  "response": string,
+  "sentiment": string,
+  "intent": string
+}
+`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a friendly IT support assistant. Respond to greetings warmly and professionally."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.7,
+      max_tokens: 200,
+      response_format: { type: "json_object" }
+    });
+
+    const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    return response.response || "Hello! How can I help you with technical issues today?";
+
+  } catch (error) {
+    console.error("Error handling greeting:", error);
+    return "Hello! I'm your IT support assistant. How can I help you today?";
+  }
+};
+
+/**
+ * Handle personal/HR queries
+ */
+const handlePersonalQuery = async (text) => {
+  try {
+    const prompt = `
+The user has a personal/HR query: "${text}"
+
+Generate a helpful response that:
+- Acknowledges it's not a technical issue
+- Provides appropriate HR contact information
+- Is supportive and professional
+
+Company Contacts:
+- HR Department: hr@company.com, Ext. 1234
+- Employee Relations: relations@company.com, Ext. 5678
+- Confidential Helpline: Ext. 9999
+
+Return JSON with:
+{
+  "response": string,
+  "department": string,
+  "contactInfo": string
+}
+`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a supportive assistant helping with HR-related queries."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.5,
+      max_tokens: 300,
+      response_format: { type: "json_object" }
+    });
+
+    const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    return response.response || "This appears to be an HR-related matter. Please contact the HR department at hr@company.com or extension 1234 for assistance.";
+
+  } catch (error) {
+    console.error("Error handling personal query:", error);
+    return "This appears to be a non-technical matter. Please contact the HR department for assistance.";
+  }
+};
+
+/**
+ * Handle ambiguous or low-confidence queries
+ */
+const handleAmbiguousQuery = async (title, description) => {
+  try {
+    const prompt = `
+The user submitted an ambiguous or unclear query:
+
+Title: ${title}
+Description: ${description}
+
+Generate a helpful response that:
+- Politely asks for clarification
+- Suggests what kind of information would be helpful
+- Offers examples of clear technical issues
+- Reassures them that we want to help
+
+Return a friendly, encouraging response (max 150 words).
+`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful assistant that guides users to provide clear information."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.7,
+      max_tokens: 300
+    });
+
+    return completion.choices[0]?.message?.content || 
+           "Could you please provide more details about your issue? For example: What specific problem are you facing? What error messages do you see? What have you tried so far?";
+
+  } catch (error) {
+    console.error("Error handling ambiguous query:", error);
+    return "I want to help you, but I need more information. Could you please describe your technical issue in more detail?";
+  }
+};
+
+/**
+ * Fallback analysis when primary AI fails
+ */
+const fallbackAIAnalysis = async (title, description) => {
+  try {
+    const prompt = `
+Quickly analyze this query and return JSON:
+
+Title: ${title}
+Description: ${description}
+
+Return:
+{
+  "isTechnical": boolean,
+  "category": string,
+  "priority": string,
+  "confidence": number,
+  "createTicket": boolean,
+  "aiResponse": string,
+  "reason": string
+}
+`;
+
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a quick classifier. Return valid JSON only."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      model: GROQ_MODEL,
+      temperature: 0.3,
+      max_tokens: 500,
+      response_format: { type: "json_object" }
+    });
+
+    const response = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    return sanitizeClassification(response, title, description);
+
+  } catch (error) {
+    console.error("Fallback analysis failed:", error);
+    return getDefaultClassification(title, description);
+  }
+};
+
+/**
+ * Sanitize and validate classification response
+ */
+const sanitizeClassification = (classification, title, description) => {
+  const defaults = getDefaultClassification(title, description);
   
-  const responses = {
-    morning: [
-      "Good morning! 🌞 I'm here to help with your technical support needs. How can I assist you today?",
-      "Morning! ☀️ Welcome to the IT support system. Please describe your technical issue when you're ready.",
-      "Good morning! Ready to help with any IT problems you're facing. What seems to be the issue?"
-    ],
-    afternoon: [
-      "Good afternoon! 🌤️ I'm your AI support assistant. How can I help you today?",
-      "Afternoon! The IT support team is here to assist. Please tell me about your technical issue.",
-      "Good afternoon! What technical problem can I help you solve today?"
-    ],
-    evening: [
-      "Good evening! 🌙 Still here to help with IT support. What's the issue you're facing?",
-      "Evening! The support system is active. Please describe your technical problem.",
-      "Good evening! How can I assist with your IT concerns tonight?"
-    ],
-    night: [
-      "Good night! 🌃 I'm available for urgent technical issues. What do you need help with?",
-      "Late night support here! ⭐ What technical problem are you experiencing?",
-      "Good night! For urgent IT matters, please describe your issue."
-    ],
-    thanks: [
-      "You're welcome! 😊 Happy to help. Let me know if you need anything else.",
-      "Glad I could assist! 👍 Feel free to reach out again if you have more questions.",
-      "Thank you! 🙏 I'm here whenever you need technical support."
-    ]
+  return {
+    isTechnical: classification.isTechnical !== undefined ? classification.isTechnical : defaults.isTechnical,
+    category: classification.category || defaults.category,
+    priority: classification.priority || defaults.priority,
+    confidence: Math.min(1, Math.max(0, classification.confidence || defaults.confidence)),
+    createTicket: classification.createTicket !== undefined ? classification.createTicket : defaults.createTicket,
+    needsClarification: classification.needsClarification || false,
+    aiResponse: classification.aiResponse || defaults.aiResponse,
+    technicalParts: classification.technicalParts || [],
+    reason: classification.reason || "Classified by AI",
+    useTrainedModel: classification.useTrainedModel || (classification.isTechnical && (classification.confidence || 0) < 0.5),
+    handledByAI: !classification.createTicket && classification.aiResponse ? true : false,
+    allowTicketCreation: classification.createTicket || false
   };
-  
-  const greetings = responses[greetingType] || responses[timeOfDay] || responses.morning;
-  return greetings[Math.floor(Math.random() * greetings.length)];
 };
 
-// Generate response for personal issues
-const generatePersonalResponse = (category) => {
-  switch(category) {
-    case 'hr':
-    case 'policies':
-      return "This appears to be an HR or policy-related matter. Please contact:\n\n📞 HR Department: hr@company.com\n📱 Phone: Ext. 1234\n📍 Location: 3rd Floor, Building A\n\nThey can assist you with policies, leaves, and HR-related queries.";
-    
-    case 'salary':
-    case 'benefits':
-      return "For salary and benefits inquiries, please contact:\n\n💰 Finance/HR Department: finance@company.com\n📱 Phone: Ext. 5678\n⏰ Office Hours: 9 AM - 6 PM\n\nInclude your employee ID for faster processing.";
-    
-    case 'personal':
-      return "For personal or confidential matters:\n\n🤝 HR Confidential Desk: confidential@company.com\n📱 Hotline: Ext. 9999 (24/7)\n👥 Employee Assistance Program: Available for counseling and support\n\nYour privacy will be respected.";
-    
-    case 'interpersonal':
-      return "For workplace conflicts or interpersonal issues:\n\n⚖️ HR Relations Team: relations@company.com\n📱 Phone: Ext. 4321\n👤 Your Manager: Can provide initial guidance\n\nAll matters are handled confidentially.";
-    
-    case 'career':
-      return "For career growth and development:\n\n📈 Learning & Development: LnD@company.com\n🎯 Career Counseling: Available every Wednesday\n📚 Training Portal: portal.company.com/learning\n\nBook a session with HR to discuss your growth path.";
-    
-    case 'admin':
-      return "For administrative requests:\n\n🏢 Admin Department: admin@company.com\n📱 Phone: Ext. 1111\n📋 Request Portal: portal.company.com/admin\n\nPlease specify your requirement details.";
-    
-    default:
-      return "This appears to be a non-technical matter. Please contact the relevant department:\n\n• HR for policies, leaves, personal matters\n• Finance for salary, expenses\n• Admin for supplies, facilities\n• Your Manager for team-related issues";
-  }
+/**
+ * Default classification when AI fails
+ */
+const getDefaultClassification = (title, description) => {
+  const text = `${title} ${description}`.toLowerCase();
+  
+  // Check for common technical keywords
+  const technicalKeywords = ['computer', 'laptop', 'email', 'outlook', 'wifi', 'network', 
+                            'password', 'login', 'error', 'crash', 'software', 'hardware'];
+  
+  const isTechnical = technicalKeywords.some(keyword => text.includes(keyword));
+  
+  return {
+    isTechnical: isTechnical,
+    category: isTechnical ? "General IT" : "General Inquiry",
+    priority: "medium",
+    confidence: 0.5,
+    createTicket: isTechnical,
+    needsClarification: text.length < 20,
+    aiResponse: isTechnical ? 
+      "Thank you for reporting this issue. Our IT team will investigate and get back to you soon." :
+      "How can I help you with technical issues today? Please describe your IT problem.",
+    technicalParts: [],
+    reason: "Default classification",
+    useTrainedModel: isTechnical,
+    handledByAI: !isTechnical,
+    allowTicketCreation: isTechnical
+  };
 };
 
 module.exports = {
   classifyIssueType,
-  getTimeBasedGreeting,
-  generatePersonalResponse
+  generateAIResponse,
+  handleGreeting,
+  handlePersonalQuery,
+  handleAmbiguousQuery
 };
